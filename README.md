@@ -1,134 +1,322 @@
-# SWE Bench Tools – Repository Evaluation Workflow
+# Repository Evaluation Workflow
 
-This repository contains a multi-stage workflow that fetches candidate GitHub repositories, evaluates them against logical criteria, and performs a deeper PR-quality analysis with an LLM.
+This repository contains a comprehensive workflow for evaluating GitHub repositories for inclusion in SWE Bench. The system uses a two-stage evaluation process: **Logical Repository Checks** and **Agentic PR Checks**.
 
-## Folder Overview
+## 📊 Spreadsheet Organization
 
-| Path | Purpose |
-|------|---------|
-| `scan_github_repos.py` | Fetches new GitHub repos (⭐ > 400) not yet listed in the Google Sheet and appends them to the first available empty rows. |
-| `logical_repo_checks.py` | Performs fast logical checks (language %, stars, LOC, already-in-SWE-Bench check) and records results in the sheet. |
-| `agentic_pr_checker.py` | Runs an LLM agent to identify at least **two** "Good PRs" for repos that passed logical checks. |
-| `main.py` | Orchestrates the three steps above in sequence. |
-| `creds.json` | Google Service-Account credentials ( **keep private!** ). |
+The workflow uses Google Sheets for data management and tracking. The main spreadsheet is accessible at:
 
-## Google Sheet Layout
+**🔗 [Repository Evaluation Spreadsheet](https://docs.google.com/spreadsheets/d/1XMbstebCi1xFSwJ7cTN-DXv4jFmdH2owWBE3R7YsXK0)**
 
-The workflow writes to the sheet with the following column mapping:
+### Spreadsheet Structure
 
-| Column | Meaning | Populated by |
-|--------|---------|-------------|
-| A | Date added | scan script |
-| B | *(unused)* | — |
-| C | `user/repo` | scan script |
-| D | Repo URL | scan script |
-| **E** | Logical check result (Yes/No) | logical checker |
-| **F** | Total merged PRs | agentic checker |
-| **G** | Logically relevant PRs | agentic checker |
-| **H** | Agentic check passed (Yes if ≥ 2 good PRs) | agentic checker |
-| I–K | *(reserved)* | — |
-| **L** | Major language name | logical checker |
-| **M** | Major language % | logical checker |
-| **N** | Stars | logical checker |
-| **O** | LOC | logical checker |
-| **P** | Already in SWE Bench? | logical checker |
+The spreadsheet contains multiple tabs for different programming languages:
 
-## Prerequisites
+| Tab Name | Language | Purpose |
+|----------|----------|---------|
+| `Java` | Java | Java repository evaluations |
+| `JS/TS` | JavaScript/TypeScript | JavaScript and TypeScript repository evaluations |
+| `Python` | Python | Python repository evaluations |
+| `Go` | Go | Go repository evaluations |
 
-1. **Python 3.9+**
-2. `pip install -r requirements.txt`
-3. Environment variables:
-   * `GITHUB_TOKEN` – personal-access token with `public_repo` scope.
-   * *(optional for LLM)* `OPENAI_API_KEY`.
-4. A Google Service Account JSON saved at `creds.json` **and** the sheet shared with the SA email.
+### Column Layout
 
-## Running the Workflow
+Each tab follows this column structure:
+
+| Column | Header | Description |
+|--------|--------|-------------|
+| A | Repository | Repository name in `user/repo` format |
+| B | Repository Link | Full GitHub URL |
+| C | Actual Repository Link | Verified GitHub URL |
+| D | Majority Language | Primary programming language |
+| E | % | Language percentage |
+| F | Stars | GitHub star count |
+| G | LOC | Lines of code count |
+| H | Already Exists | Yes, if the repo already exists in the LT |
+| I | Logical Checks | Result of logical evaluation |
+| J | PRs Count | Total merged PRs found |
+| K | Relevant PRs Count | PRs that passed logical checks |
+| L | Good PRs > 2 | Agentic evaluation result (at least two good PRs found) |
+| M | Accepted | Manual Review Verdict |
+| N | Why rejected | Rejection reason |
+| P | Tasks Count in LT | Total conversations in labeling tool |
+| Q | Improper in LT | Count of improper tasks in labeling tool |
+| R | Batch Link | Direct link to labeling tool batch |
+| S | Addition Date | Date when repo was added to labeling tool |
+
+### Labeling Tool Data Integration
+
+The logical repository checks script automatically fetches and updates data from the labeling tool API. This integration provides:
+
+
+#### Update Logic
+
+The script uses intelligent update rules based on the current "Added" column status:
+
+**For "Yes" rows (already added):**
+- Refreshes conversation counts and improper counts
+- Updates addition date if available
+- Does not change the "Added" status
+
+**For "No" or empty rows:**
+- If repository found in labeling tool:
+  - Sets "Added" to "YES"
+  - Populates all labeling tool data
+  - Creates batch link
+- If repository not found:
+  - Sets "Added" to "NO"
+  - Clears all labeling tool fields
+
+#### Labeling Tool Projects
+
+The script checks against these labeling tool projects:
+
+| Language | Project ID | Purpose |
+|----------|------------|---------|
+| Python | 40 | Python repositories |
+| JavaScript | 41 | JavaScript repositories |
+| Java | 42 | Java repositories |
+| Go | 43 | Go repositories |
+
+#### Repository Name Conversion
+
+The script converts repository names between formats:
+- **GitHub format**: `user/repo`
+- **Labeling tool format**: `user__repo`
+
+Example: `tensorflow/tensorflow` → `tensorflow__tensorflow`
+
+## 🔄 Workflow Overview
+
+The evaluation process consists of two main stages:
+
+1. **Logical Repository Checks** - Automated evaluation of repository metadata
+2. **Agentic PR Checks** - AI-powered evaluation of pull requests
+
+### Stage 1: Logical Repository Checks
+
+**Script**: `src/logical_repo_checks.py`
+
+This stage evaluates repositories based on objective criteria:
+
+#### Check Criteria
+
+1. **SWE Bench Duplicate Check**
+   - Ensures the repository doesn't already exist in SWE Bench
+   - Checks against the language-specific tab in the main spreadsheet
+
+2. **Language Check**
+   - Verifies the target language constitutes ≥70% of the codebase
+   - Uses GitHub's language detection API
+
+3. **Star Rating Check**
+   - Ensures the repository has ≥400 GitHub stars
+   - Indicates community adoption and quality
+
+4. **Lines of Code (LOC) Check**
+   - Dynamic requirement based on star count
+   - Formula: `required_LOC = max(0, 100,000 - (stars × 200))`
+   - Examples:
+     - 400 stars → 20,000 LOC minimum
+     - 800 stars → 60,000 LOC minimum
+     - 1500+ stars → 0 LOC minimum
+
+#### Configuration
+
+The script uses these default settings:
+- **Target Language**: Java (configurable)
+- **Minimum Language Percentage**: 70%
+- **Minimum Stars**: 400
+- **LOC Calculation**: Dynamic based on star count
+
+#### Output
+
+- Updates the spreadsheet with evaluation results
+- Marks repositories as "Yes" or "No" in the "Added" column
+- Provides detailed failure reasons for rejected repositories
+
+### Stage 2: Agentic PR Checks
+
+**Script**: `src/agentic_pr_checker.py`
+
+This stage evaluates repositories that passed logical checks by analyzing their pull requests using AI.
+
+#### Check Criteria
+
+1. **PR File Analysis**
+   - Ensures PRs contain appropriate file types for the target language
+   - Validates test file requirements (≥2 test files, ≥2 source files)
+   - Checks for language-specific dependency files
+
+2. **Issue Quality Evaluation**
+   - Uses OpenAI's LLM to evaluate linked GitHub issues
+   - Assesses if issues are "Good PR" candidates
+
+#### "Good PR" Criteria
+
+An issue is considered a "Good PR" if it:
+- **Clear and Actionable**: Describes a specific, actionable problem or feature
+- **Not a Revert**: Not a request to revert previous changes
+- **Not a Question**: Not a simple user question or vague request for help
+
+#### Configuration
+
+The script supports multiple languages with specific configurations:
+
+| Language | Sheet Name | Source Extensions | Dependency Files |
+|----------|------------|-------------------|------------------|
+| Java | Java | `.java` | `pom.xml`, `build.gradle`, etc. |
+| JavaScript | JS/TS | `.js`, `.jsx`, `.ts`, `.tsx` | `package.json`, `yarn.lock`, etc. |
+| TypeScript | JS/TS | `.ts`, `.tsx` | `package.json`, `tsconfig.json`, etc. |
+| Python | Python | `.py` | `requirements.txt`, `pyproject.toml`, etc. |
+| Go | Go | `.go` | `go.mod`, `go.sum`, etc. |
+
+#### Additional Settings
+
+- **Target Good PRs**: 2 (minimum required to pass)
+- **LLM Model**: `o3-mini` (OpenAI)
+- **Merged After Date**: November 1, 2024
+- **Debug Mode**: Available for testing specific repositories
+
+#### Output
+
+- Updates the spreadsheet with PR analysis results
+- Generates CSV reports in `repo_evaluator/pr_reports/`
+- Marks repositories as "Yes" or "No" in the "Good PRs > 2" column
+
+## 🚀 Running the Scripts
+
+### Prerequisites
+
+1. **Python Environment**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Configuration Files**
+   - `src/config.json` - GitHub API tokens
+   - `src/creds.json` - Google Sheets service account credentials
+   - `OPENAI_API_KEY` environment variable
+
+3. **Google Sheets Access**
+   - Share the spreadsheet with your service account email
+   - Ensure proper permissions for read/write access
+
+### Running Individual Scripts
+
+#### Logical Repository Checks
+```bash
+cd src
+python logical_repo_checks.py
+```
+
+#### Agentic PR Checks
+```bash
+cd src
+python agentic_pr_checker.py
+```
+
+### Running the Complete Workflow
 
 ```bash
 python main.py
 ```
-The script will:
-1. Add up to 5 000 new repos (subject to free rows) with ⭐ > 400.
-2. Evaluate logical criteria and update columns E & L–P.
-3. Run agentic PR analysis on repos with **E = Yes** and fill columns F–H.
 
-## Running Individual Stages
+This runs both stages in sequence:
+1. Logical repository checks
+2. Agentic PR checks
 
-```bash
-python scan_github_repos.py            # only fetch & append repos
-python -m repo_evaluator.logical_repo_checks   # only logical checks
-python -m repo_evaluator.agentic_pr_checker    # only agentic checks
+## 📁 File Structure
+
+```
+repo_checker/
+├── src/
+│   ├── logical_repo_checks.py    # Stage 1: Repository evaluation
+│   ├── agentic_pr_checker.py     # Stage 2: PR evaluation
+│   ├── config.json              # GitHub tokens
+│   ├── creds.json               # Google Sheets credentials
+│   └── __init__.py
+├── repo_evaluator/
+│   └── pr_reports/              # Generated PR analysis reports
+├── main.py                      # Main workflow orchestrator
+├── requirements.txt             # Python dependencies
+└── README.md                    # This file
 ```
 
-## How Each Stage Works
+## 🔧 Configuration
 
-### 1. `scan_github_repos.py`
+### Language Configuration
 
-* **Goal** – keep the Google Sheet topped-up with new candidate repositories that have **≥ 400 GitHub stars**.
-* **Process**
-  1. Reads the sheet to determine how many empty rows remain.
-  2. Builds star-range *slices* (`50k–100k`, `20k–49 999`, … `400–999`) because GitHub search only returns the first 1 000 hits per query.
-  3. For each slice, issues a query `stars:<range> sort:updated-desc` and walks the paginated results.
-  4. Skips repositories already present in Column C.
-  5. Stops when either the sheet is full or `PULL_REPO_COUNT` (default 5 000) new repos have been collected.
-* **Columns written** – A (Date), B (blank), C (`owner/repo`), D (repo URL).
+To change the target language, modify the `TARGET_LANGUAGE` variable in the respective script:
 
-### 2. `logical_repo_checks.py`
+```python
+# In logical_repo_checks.py
+TARGET_LANGUAGE = "Python"  # Options: Java, JavaScript, Python, Go
 
-* **Goal** – quickly vet repos and decide if they are interesting for SWE-bench style tasks.
-* **Row selection** – only rows where **Column M** (language %) is empty.
-* **Checks performed**
-  | Check | Pass condition | Notes |
-  |-------|----------------|-------|
-  | Already in SWE Bench? | No | Looks up a separate sheet of existing SWE-bench repos. |
-  | Primary language share | ≥ 70 % | Based on GitHub Language API. |
-  | Star count | ≥ 400 | Same threshold as fetch step. |
-  | Lines-of-Code | `LOC ≥ max(0, 100 000 - (stars×200))` | Total LOC fetched via CodeTabs API. Skipped if language/stars already fail. |
-* **Output**
-  * **Column E** – "Yes" if **all** checks pass, otherwise "No".
-  * **L–P** – language name, %, stars, LOC, and whether repo already existed in SWE-bench.
+# In agentic_pr_checker.py  
+TARGET_LANGUAGE = "Python"  # Options: Java, JavaScript, TypeScript, Python, Go
+```
 
-### 3. `agentic_pr_checker.py`
+### API Configuration
 
-* **Goal** – make sure each logically-approved repo actually contains *Good PRs* suitable for automated patching.
-* **Row selection** – rows where **E = Yes** **and** **H** is empty.
-* **Pipeline**
-  1. **Merged-PR harvest** – fetches closed PRs merged **after `MERGED_AFTER_DATE`** (config) via GitHub API.
-  2. **Logical PR filter**  
-     * PR body references a single issue (`closes #123`, etc.).
-     * Files changed do **not** include disallowed languages (C/C++/Rust/…).
-     * Contains at least one *test* file *and* at least one non-test source file.
-     * Not purely dependency updates.
-  3. **Agentic (LLM) check** – calls an OpenAI model with a prompt that classifies the linked issue as **"Good PR"** or **"Bad PR"**. Stops once **`TARGET_GOOD_PRS` (= 2)** good PRs are found.
-* **Output columns**
-  | Column | Meaning |
-  |--------|---------|
-  | F | Total merged PRs after Nov 2024 |
-  | G | Logically relevant PRs that has an issue statement linked to it |
-  | H | "Yes" if ≥ 2 Good PRs, else "No" |
-
-## Customisation
-
-* **Change fetch size** – edit `PULL_REPO_COUNT` in `scan_github_repos.py`.
-* **Alter logical thresholds** – change star / LOC / language % constants inside `logical_repo_checks.py`.
-* **Tune agentic behaviour** – adjust `TARGET_GOOD_PRS`, `MERGED_AFTER_DATE`, or the `AGENT_PROMPT` in `agentic_pr_checker.py`.
-
-## Secrets & Private Files
-
-`config.json` and `creds.json` **are intentionally excluded from version control** (listed in your `.gitignore`).
-
-• **`config.json`** – JSON with a single key:
-
+**GitHub Tokens** (`src/config.json`):
 ```json
 {
   "GITHUB_TOKENS": "ghp_xxxxxxxxx ghp_yyyyyyyy"
 }
 ```
 
-Supply one or more space-separated personal-access tokens (PATs). These are rotated automatically to avoid hitting rate limits.  
-If you prefer, you may instead set `GITHUB_TOKEN` in your environment; the first script will then ignore the config file.
+**OpenAI API Key** (Environment Variable):
+```bash
+export OPENAI_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+```
 
-• **`creds.json`** – Google *Service-Account* credentials used by all scripts to read/write the Google Sheet.  
-Create a service account in Google Cloud Console, enable Drive & Sheets APIs, download the JSON key, rename/move it to this path, and **share the target sheet with the service-account email**.
+## 📈 Monitoring and Results
 
-Keep both files private – **never commit them**.
+### Spreadsheet Updates
+
+Both scripts automatically update the spreadsheet with:
+- Evaluation results
+- Detailed metrics
+- Failure reasons
+- Processing timestamps
+
+### Generated Reports
+
+The agentic PR checker generates CSV reports in `repo_evaluator/pr_reports/` containing:
+- PR numbers and URLs
+- Issue numbers and URLs
+- AI evaluation results
+- Decision comments
+
+### Console Output
+
+Both scripts provide detailed console output including:
+- Processing progress
+- Evaluation details
+- Error messages
+- Summary statistics
+
+## 🛠️ Troubleshooting
+
+### Common Issues
+
+1. **Rate Limiting**: The scripts use token rotation to handle GitHub API rate limits
+2. **Sheet Access**: Ensure the service account has proper permissions
+3. **API Keys**: Verify all API keys are valid and have appropriate permissions
+4. **Language Detection**: Some repositories may have ambiguous language detection
+
+### Debug Mode
+
+Enable debug mode in `agentic_pr_checker.py`:
+```python
+DEBUG_MODE = True
+DEBUG_REPO_URL = "https://github.com/your-repo/name"
+```
+
+## 📝 Notes
+
+- The workflow is designed to be resumable - it only processes unprocessed rows
+- Both scripts include comprehensive error handling and logging
+- The system supports multiple programming languages with language-specific configurations
+- Results are automatically saved to Google Sheets for easy tracking and collaboration 

@@ -30,7 +30,7 @@ if not GITHUB_TOKEN:
         if token_str:
             GITHUB_TOKEN = token_str.split()[0]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-CREDS_JSON_PATH = 'repo_evaluator\creds.json'
+CREDS_JSON_PATH = os.path.join(os.path.dirname(__file__), 'creds.json')
 SCOPE = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 
 # --- Script Behavior ---
@@ -41,15 +41,151 @@ LLM_MODEL = "o3-mini"
 MERGED_AFTER_DATE = datetime.fromisoformat('2024-11-01T00:00:00+00:00')
 
 # --- Spreadsheet Configuration ---
-# Key for the "Trainers repositories" sheet from get_information.py
-SPREADSHEET_KEY = "1yRoHc_y5cn_IsvYdRG8bxSPONpuXEDRJ_XCdfxkbmgY"
-SHEET_NAME = "Trainers repositories"
-# Columns are specified by letter (updated mapping)
-REPO_URL_COLUMN = "C"
-LOGICAL_CHECK_COLUMN = "E"  # Yes/No after logical checks
-TOTAL_PRS_COUNT_COLUMN = "F"  # Total PRs
-RELEVANT_PRS_COUNT_COLUMN = "G"  # Logically relevant PRs count
-AGENTIC_CHECK_COLUMN = "H"  # Good PRs > 2
+# Key for the sheet to be processed
+SPREADSHEET_KEY = "1XMbstebCi1xFSwJ7cTN-DXv4jFmdH2owWBE3R7YsXK0"
+
+# --- Language Configuration ---
+TARGET_LANGUAGE = "Java"  # Set target language directly
+
+# Language-specific configurations for agentic PR checks
+LANGUAGE_CONFIG = {
+    'Java': {
+        'sheet_name': 'Java',
+        'target_language': 'Java',
+        'source_ext': {'.java'},
+        'dependency_files': {
+            'pom.xml', 'build.gradle', 'build.gradle.kts',
+            'settings.gradle', 'settings.gradle.kts',
+            'gradlew', 'gradlew.bat', 'mvnw', 'mvnw.cmd'
+        },
+    },
+    'JavaScript': {
+        'sheet_name': 'JS/TS',
+        'target_language': 'JavaScript',
+        'source_ext': {'.js', '.jsx', '.ts', '.tsx'},
+        'dependency_files': {
+            'package.json', 'yarn.lock', 'pnpm-lock.yaml', 'package-lock.json',
+            'webpack.config.js', 'rollup.config.js', 'vite.config.js',
+            'babel.config.js', '.eslintrc.js', '.prettierrc.js'
+        },
+    },
+    'TypeScript': {
+        'sheet_name': 'JS/TS',
+        'target_language': 'TypeScript',
+        'source_ext': {'.ts', '.tsx'},
+        'dependency_files': {
+            'package.json', 'yarn.lock', 'pnpm-lock.yaml', 'package-lock.json',
+            'tsconfig.json', 'tsconfig.build.json', 'webpack.config.js',
+            'rollup.config.js', 'vite.config.ts', 'babel.config.js',
+            '.eslintrc.js', '.prettierrc.js'
+        },
+    },
+    'Python': {
+        'sheet_name': 'Python',
+        'target_language': 'Python',
+        'source_ext': {'.py'},
+        'dependency_files': {
+            'requirements.txt', 'pyproject.toml', 'setup.py', 'Pipfile',
+            'Pipfile.lock', 'poetry.lock', 'tox.ini', 'pytest.ini'
+        },
+    },
+    'Go': {
+        'sheet_name': 'Go',
+        'target_language': 'Go',
+        'source_ext': {'.go'},
+        'dependency_files': {
+            'go.mod', 'go.sum', 'Gopkg.toml', 'Gopkg.lock'
+        },
+    }
+}
+
+# Get current language configuration
+LANG_CONFIG = LANGUAGE_CONFIG.get(TARGET_LANGUAGE, LANGUAGE_CONFIG['JavaScript'])
+SHEET_NAME = LANG_CONFIG['sheet_name']
+LANGUAGE = LANG_CONFIG['target_language']
+
+# Non-code/text extensions that are always acceptable regardless of LANGUAGE
+NON_CODE_EXT = {
+    '.md', '.markdown', '.txt', '.json', '.yml', '.yaml', '.xml', '.toml', '.ini', '.cfg', '.lock',
+    '.html', '.htm', '.css', '.scss', '.sass', '.less', '.svg', '.png', '.jpg', '.jpeg', '.gif',
+    '.ico', '.woff', '.woff2', '.ttf', '.eot', '.csv', '.tsv', '.log', '.sql', '.sh', '.bat',
+    '.ps1', '.dockerfile', '.gitignore', '.gitattributes', '.editorconfig', '.browserslistrc'
+}
+
+# Universal test file extensions that are always considered test files
+UNIVERSAL_TEST_EXT = {'.snap', '.spec'}
+
+# Build one big set with _all_ source extensions so we can identify disallowed ones
+# dynamically. This ensures that when LANGUAGE = "Java", any .py or .ts files will
+# be flagged automatically without maintaining a bespoke disallowed list.
+ALL_SOURCE_EXT = set()
+for _lang_cfg in LANGUAGE_CONFIG.values():
+    ALL_SOURCE_EXT.update(_lang_cfg["source_ext"])
+
+
+def _get_language_config(lang_name: str):
+    """Return config dict for a language, falling back to empty sets if unknown."""
+    return LANGUAGE_CONFIG.get(lang_name, {
+        "source_ext": set(),
+        "dependency_files": set(),
+        "sheet_name": "Unknown",
+        "target_language": "Unknown"
+    })
+
+
+def _is_test_file(filepath: str, lang_name: str) -> bool:
+    """
+    Determine if a path looks like a test file for the given language.
+    Enhanced to handle universal test patterns and language-specific patterns.
+    """
+    path_norm = filepath.replace("\\", "/").lower()
+    base = os.path.basename(path_norm)
+    lang_cfg = _get_language_config(lang_name)
+    
+    # Check for universal test file extensions
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext in UNIVERSAL_TEST_EXT:
+        return True
+    
+    # Check for test directories
+    if "/test/" in path_norm or "/tests/" in path_norm or "/spec/" in path_norm:
+        return True
+    
+    # Check for test patterns in filename
+    if any(token in base for token in ("test", "spec")):
+        return True
+    
+    # Language-specific heuristics
+    if lang_name == "Java" and base.endswith("test.java"):
+        return True
+    if lang_name == "Python" and (base.startswith("test_") or base.endswith("_test.py")):
+        return True
+    if lang_name in ["JavaScript", "TypeScript"] and any(base.endswith(suffix) for suffix in ['.test.js', '.test.jsx', '.test.ts', '.test.tsx', '.spec.js', '.spec.jsx', '.spec.ts', '.spec.tsx']):
+        return True
+    if lang_name == "Go" and base.endswith("_test.go"):
+        return True
+    
+    return False
+
+
+def print_language_configuration():
+    """
+    Prints the current language configuration for easy reference.
+    """
+    print("=" * 80)
+    print("LANGUAGE CONFIGURATION")
+    print("=" * 80)
+    print(f"Target Language: {TARGET_LANGUAGE}")
+    print(f"Sheet Name: {SHEET_NAME}")
+    print(f"Spreadsheet Key: {SPREADSHEET_KEY}")
+    print("-" * 80)
+    print(f"Source Extensions: {', '.join(sorted(LANG_CONFIG['source_ext']))}")
+    print(f"Dependency Files: {', '.join(sorted(LANG_CONFIG['dependency_files']))}")
+    print("-" * 80)
+    print(f"Universal Test Extensions: {', '.join(sorted(UNIVERSAL_TEST_EXT))}")
+    print(f"Non-Code Extensions: {', '.join(sorted(NON_CODE_EXT))}")
+    print("=" * 80)
+    print()
 
 # --- Agent Prompt ---
 AGENT_PROMPT = """
@@ -77,31 +213,60 @@ if not OPENAI_API_KEY:
     print("❌ Error: OPENAI_API_KEY environment variable not set. The script cannot run without it.")
     sys.exit(1)
 
+def get_column_indices(header):
+    """
+    Get column indices from header, case-insensitive.
+    If headers are not found, use default values.
+    """
+    header = [h.lower().strip() for h in header]
+    indices = {}
+    
+    def find_idx(headers_to_check, default_idx):
+        for h in headers_to_check:
+            try:
+                return header.index(h)
+            except ValueError:
+                continue
+        return default_idx
+
+    # Mappings based on the new column order
+    indices['user_repo'] = find_idx(['repository'], 0) # Default A
+    indices['logical_checks'] = find_idx(['logical checks'], 8) # Default I
+    indices['total_prs'] = find_idx(['prs count'], 9) # Default J
+    indices['relevant_prs'] = find_idx(['relevant prs count'], 10) # Default K
+    indices['agentic_check'] = find_idx(['good prs > 2'], 11) # Default L
+    
+    return indices
+
 # --- Google Sheets Helper ---
 def get_sheet_data(spreadsheet_key, sheet_name):
-    """Fetches all data from the Google Sheet and returns it as a pandas DataFrame without headers."""
+    """Fetches all data and header from the Google Sheet."""
     try:
         creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_JSON_PATH, SCOPE)
         client = gspread.authorize(creds)
         sheet = client.open_by_key(spreadsheet_key).worksheet(sheet_name)
         data = sheet.get_all_values()
-        return pd.DataFrame(data)
+        if not data:
+            return pd.DataFrame(), []
+        header = data[0]
+        # Create DataFrame with generic column names to avoid parsing issues
+        df = pd.DataFrame(data[1:], columns=[f'col_{i}' for i in range(len(header))])
+        return df, header
     except gspread.exceptions.SpreadsheetNotFound:
         print(f"❌ Spreadsheet not found. Make sure the key '{spreadsheet_key}' is correct.")
-        return None
+        return None, None
     except Exception as e:
         print(f"❌ Error fetching sheet data: {e}")
-        return None
+        return None, None
 
-def update_sheet_cell(spreadsheet_key, sheet_name, row_index, col_letter, value):
-    """Updates a single cell in the Google Sheet using a column letter."""
+def update_sheet_cell(spreadsheet_key, sheet_name, row_index, col_index, value):
+    """Updates a single cell in the Google Sheet using a 0-based column index."""
     try:
         creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_JSON_PATH, SCOPE)
         client = gspread.authorize(creds)
         sheet = client.open_by_key(spreadsheet_key).worksheet(sheet_name)
-        col_index = ord(col_letter.upper()) - ord('A') + 1
-        sheet.update_cell(row_index, col_index, str(value))
-        print(f"📄 Updated sheet: Row {row_index}, Column '{col_letter}' = {value}")
+        sheet.update_cell(row_index, col_index + 1, str(value)) # gspread is 1-based
+        print(f"📄 Updated sheet: Row {row_index}, Column {col_index + 1} = {value}")
     except Exception as e:
         print(f"❌ Failed to update sheet: {e}")
 
@@ -192,22 +357,63 @@ def extract_issue_number(pr_body):
     return unique_issues.pop() if len(unique_issues) == 1 else None
 
 def analyze_pr_files(files):
-    if not files: return None, "No files found in PR."
-    disallowed_ext = {'.c', '.cpp', '.h', '.cs', '.java', '.go', '.rs'}
-    py_ext = {'.py'}
-    js_ts_ext = {'.js', '.ts', '.jsx', '.tsx'}
-    dependency_files = {'package.json', 'yarn.lock', 'requirements.txt', 'pyproject.toml', 'Pipfile'}
-    filenames = [f['filename'] for f in files]
-    extensions = {os.path.splitext(f)[1].lower() for f in filenames}
-    if not extensions.isdisjoint(disallowed_ext): return None, "Disallowed language detected."
-    if not extensions.isdisjoint(py_ext) and not extensions.isdisjoint(js_ts_ext): return None, "Mixed Python and JS/TS languages."
-    source_files = [f for f in filenames if os.path.basename(f) not in dependency_files]
-    if not source_files: return None, "PR is only a dependency update."
-    test_files = [f for f in filenames if 'test' in f.lower() or 'spec' in f.lower()]
-    non_test_source_files = [f for f in source_files if f not in test_files]
-    if not test_files: return None, "No test files found."
-    if not non_test_source_files: return None, "No non-test source files found."
-    return "Pass", "All file checks passed."
+    """Perform language-aware logical checks on PR file list."""
+    if not files:
+        return None, "No files found in PR."
+
+    lang_cfg = _get_language_config(LANGUAGE)
+    allowed_ext = lang_cfg["source_ext"]
+    dependency_files = lang_cfg["dependency_files"]
+
+    filenames = [f["filename"] for f in files]
+
+    # ------------------------------------------------------------------
+    # 1. Language gate – ensure no files from other *code* languages exist
+    # ------------------------------------------------------------------
+    disallowed_ext = ALL_SOURCE_EXT - allowed_ext  # dynamic disallowed set
+
+    for fn in filenames:
+        ext = os.path.splitext(fn)[1].lower()
+
+        # Skip obvious non-code / text / documentation files
+        if ext in NON_CODE_EXT or os.path.basename(fn) in dependency_files:
+            continue
+
+        # If file has a code extension but is not part of the target language, fail.
+        if ext in disallowed_ext:
+            return None, f"Disallowed language file detected: {fn}"
+
+        # Unknown extension that is not explicitly allowed nor in NON_CODE_EXT – assume code and fail.
+        if ext not in allowed_ext:
+            return None, f"Unknown or binary file type not allowed: {fn}"
+
+    # ------------------------------------------------------------------
+    # 2. Split into test / non-test source files for the target language
+    # ------------------------------------------------------------------
+    test_files = []
+    non_test_source_files = []
+
+    for fn in filenames:
+        ext = os.path.splitext(fn)[1].lower()
+        if ext not in allowed_ext:
+            # Non-code or ignored file – skip counts
+            continue
+
+        if os.path.basename(fn) in dependency_files:
+            continue  # build/dependency file – ignore
+
+        if _is_test_file(fn, LANGUAGE):
+            test_files.append(fn)
+        else:
+            non_test_source_files.append(fn)
+
+    if len(test_files) < 2:
+        return None, f"Only {len(test_files)} test file(s) found; at least 2 required."
+
+    if len(non_test_source_files) < 2:
+        return None, f"Only {len(non_test_source_files)} non-test source file(s) found; at least 2 required."
+
+    return "Pass", f"All {LANGUAGE} file checks passed."
 
 def run_llm_check(issue_body):
     if not issue_body or len(issue_body.strip()) < 50: return "Bad PR", "Issue body is too short."
@@ -230,9 +436,6 @@ def find_logically_relevant_prs(owner, repo):
     logically_relevant_prs = []
     for pr in all_prs:
         pr_number = pr.get('number')
-        if not pr_number:
-            print(f"  - Skip: PR data is missing 'number' key. Data: {pr}")
-            continue
 
         if DEBUG_MODE: 
             print(f"\n--- Analyzing PR #{pr_number} ---")
@@ -265,110 +468,130 @@ def run_agentic_check_on_repo(logically_relevant_prs, owner, repo):
     """
     Runs the agentic (LLM) check on a list of logically relevant PRs.
     Stops when the target number of good PRs is found.
+    Returns the agent's decision for each PR.
     """
     good_prs_found = 0
-    if not logically_relevant_prs: return False
+    agent_decisions = {} # Store agent decisions for each PR
+
+    if not logically_relevant_prs: return False, agent_decisions
+
     for pr in logically_relevant_prs:
-        print(f"\n🤖 Running agentic check on PR #{pr['number']}...")
-        # Use the issue number we stored earlier
+        pr_number = pr['number']
+        print(f"\n🤖 Running agentic check on PR #{pr_number}...")
+        
         issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr['issue_number']}"
         issue_body = get_issue_body(issue_url)
+        
         result, comment = run_llm_check(issue_body)
         print(f"  - LLM Result: {result} | Comment: {comment}")
+        
+        agent_decisions[pr_number] = {"result": result, "comment": comment}
+        
         if result == "Good PR":
             good_prs_found += 1
-        if good_prs_found >= TARGET_GOOD_PRS:
-            print(f"🎯 Target of {TARGET_GOOD_PRS} good PRs reached.")
-            return True
+            if good_prs_found >= TARGET_GOOD_PRS:
+                print(f"🎯 Target of {TARGET_GOOD_PRS} good PRs reached.")
+                break # Stop checking after reaching the target
         time.sleep(1)
-    return good_prs_found >= TARGET_GOOD_PRS
+        
+    return good_prs_found >= TARGET_GOOD_PRS, agent_decisions
 
-def write_prs_to_csv(owner, repo, relevant_prs):
+def write_prs_to_csv(owner, repo, relevant_prs, agent_decisions):
     """Writes the list of relevant PRs and their issues to a repo-specific CSV file."""
-    output_dir = "repo_evaluator\pr_reports"
+    output_dir = "repo_evaluator/pr_reports"
     os.makedirs(output_dir, exist_ok=True)
     filename = os.path.join(output_dir, f"{owner}_{repo}_relevant_prs.csv")
     
     with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['pr_number', 'pr_url', 'issue_number', 'issue_url']
+        fieldnames = ['pr_number', 'pr_url', 'issue_number', 'issue_url', 'agent_result', 'agent_comment']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         for pr in relevant_prs:
             pr_num = pr['number']
             issue_num = pr['issue_number']
+            decision = agent_decisions.get(pr_num, {})
             writer.writerow({
                 'pr_number': pr_num,
                 'pr_url': f"https://github.com/{owner}/{repo}/pull/{pr_num}",
                 'issue_number': issue_num,
-                'issue_url': f"https://github.com/{owner}/{repo}/issues/{issue_num}"
+                'issue_url': f"https://github.com/{owner}/{repo}/issues/{issue_num}",
+                'agent_result': decision.get('result', 'Not Checked'),
+                'agent_comment': decision.get('comment', '')
             })
     print(f"📄 Saved PR report for {owner}/{repo} to {filename}")
 
 # --- Main Script ---
 def main():
     print("--- Agentic PR Checker ---")
+    
+    # Display language configuration
+    print_language_configuration()
+    
     if DEBUG_MODE:
         print("🕵️ DEBUG MODE ENABLED 🕵️")
         owner, repo = parse_github_url(DEBUG_REPO_URL)
         if owner and repo:
             relevant_prs, total_count = find_logically_relevant_prs(owner, repo)
             print(f"\nTotal PRs: {total_count}, Relevant PRs: {len(relevant_prs)}")
-            passed = run_agentic_check_on_repo(relevant_prs, owner, repo)
+            passed, agent_decisions = run_agentic_check_on_repo(relevant_prs, owner, repo)
             print(f"\nFinal Result for {DEBUG_REPO_URL}: Agentic Check {'Passed' if passed else 'Failed'}")
         return
 
     print("🚀 Running in Production Mode (using Google Sheets)...")
-    sheet_df = get_sheet_data(SPREADSHEET_KEY, SHEET_NAME)
+    sheet_df, header = get_sheet_data(SPREADSHEET_KEY, SHEET_NAME)
     if sheet_df is None: sys.exit(1)
     
-    repo_col_idx = ord(REPO_URL_COLUMN.upper()) - ord('A')
-    logic_col_idx = ord(LOGICAL_CHECK_COLUMN.upper()) - ord('A')
-    relevant_prs_col_idx = ord(RELEVANT_PRS_COUNT_COLUMN.upper()) - ord('A')
+    column_indices = get_column_indices(header)
+    print(f"Column mapping: {column_indices}")
+    
+    user_repo_col_idx = column_indices['user_repo']
+    logic_col_idx = column_indices['logical_checks']
+    agentic_col_idx = column_indices['agentic_check']
 
     # --- Resume Logic: Find rows that need processing ---
-    # A row needs processing if logical check (Col D) is "Yes" and relevant PRs (Col F) is empty.
     unprocessed_rows = []
     max_cols = len(sheet_df.columns)
-    if max_cols > repo_col_idx and max_cols > logic_col_idx and max_cols > relevant_prs_col_idx:
-        for index, row in sheet_df.iloc[1:].iterrows(): # Skip header
-            repo_url = row.iat[repo_col_idx] if repo_col_idx < len(row) else ''
-            logical_check = row.iat[logic_col_idx] if logic_col_idx < len(row) else ''
-            relevant_prs_val = row.iat[relevant_prs_col_idx] if relevant_prs_col_idx < len(row) else ''
 
-            # URL present check
-            url_present = isinstance(repo_url, str) and repo_url.strip().startswith('http')
+    if max_cols > max(user_repo_col_idx, logic_col_idx, agentic_col_idx):
+        for index, row in sheet_df.iterrows():
+            user_repo = row.iloc[user_repo_col_idx] if user_repo_col_idx < len(row) else ''
+            logical_check = row.iloc[logic_col_idx] if logic_col_idx < len(row) else ''
+            agentic_val = row.iloc[agentic_col_idx] if agentic_col_idx < len(row) else ''
 
-            # Logical check passed?
-            logic_passed = isinstance(logical_check, str) and logical_check.strip().lower() == 'yes'
+            user_repo_present = isinstance(user_repo, str) and '/' in user_repo.strip()
+            logic_passed = isinstance(logical_check, str) and logical_check.strip() == 'Yes'
+            agentic_empty = pd.isna(agentic_val) or str(agentic_val).strip() == ''
 
-            # Agentic check needed if relevant PRs cell is empty or NaN
-            agentic_check_needed = pd.isna(relevant_prs_val) or str(relevant_prs_val).strip() == ''
+            if user_repo_present and logic_passed and agentic_empty:
+                unprocessed_rows.append((index + 2, row)) # Use 1-based index for sheet, +1 for header
+    else:
+        print("Error: Not enough columns in the sheet to find required columns.")
+        return
 
-            if url_present and logic_passed and agentic_check_needed:
-                unprocessed_rows.append((index + 1, row)) # Use 1-based index for sheet updates
-    
     print(f"Found {len(unprocessed_rows)} repositories that passed logical checks and need agentic evaluation.")
     
     for sheet_row_index, row in unprocessed_rows:
-        repo_url = row.iat[repo_col_idx]
-        print(f"\n{'='*60}\nProcessing Row {sheet_row_index}: {repo_url}\n{'='*60}")
+        user_repo = row.iloc[user_repo_col_idx].strip()
+        print(f"\n{'='*60}\nProcessing Row {sheet_row_index}: {user_repo}\n{'='*60}")
         
-        owner, repo = parse_github_url(repo_url)
-        if not owner or not repo:
-            print("❌ Skipping: Invalid GitHub URL.")
+        try:
+            owner, repo = user_repo.split('/')
+        except ValueError:
+            print(f"❌ Skipping: Invalid user/repo format in Column A: '{user_repo}'")
             continue
             
         relevant_prs, total_count = find_logically_relevant_prs(owner, repo)
-        update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, TOTAL_PRS_COUNT_COLUMN, total_count)
-        update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, RELEVANT_PRS_COUNT_COLUMN, len(relevant_prs))
+        update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['total_prs'], total_count)
+        update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['relevant_prs'], len(relevant_prs))
 
+        agent_decisions = {}
         if relevant_prs:
-            write_prs_to_csv(owner, repo, relevant_prs)
-            passed = run_agentic_check_on_repo(relevant_prs, owner, repo)
-            update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, AGENTIC_CHECK_COLUMN, "Yes" if passed else "No")
+            passed, agent_decisions = run_agentic_check_on_repo(relevant_prs, owner, repo)
+            write_prs_to_csv(owner, repo, relevant_prs, agent_decisions)
+            update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['agentic_check'], "Yes" if passed else "No")
         else:
             print("⏭️ Skipping agentic check: No logically relevant PRs found.")
-            update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, AGENTIC_CHECK_COLUMN, "No")
+            update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['agentic_check'], "No")
     print("\n🎉 All repositories analyzed.")
 
 def get_prs_for_repo(user_repo):

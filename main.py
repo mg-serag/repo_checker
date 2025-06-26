@@ -1,7 +1,7 @@
 import traceback
-import scan_github_repos
-import logical_repo_checks
-import agentic_pr_checker
+from src import scan_github_repos
+from src import logical_repo_checks
+from src import agentic_pr_checker
 
 def run_step(step_name, function_to_run):
     """Helper function to run a step of the workflow."""
@@ -25,9 +25,9 @@ def main_workflow():
     """
     print("🚀 --- Kicking off the main repository evaluation workflow --- 🚀")
 
-    if not run_step("Step 1: Scan for new GitHub repositories", scan_github_repos.main):
-        print("\nWorkflow stopped due to failure in Step 1.")
-        return
+    # if not run_step("Step 1: Scan for new GitHub repositories", scan_github_repos.main):
+    #     print("\nWorkflow stopped due to failure in Step 1.")
+    #     return
 
     if not run_step("Step 2: Run logical repository checks", logical_repo_checks.main):
         print("\nWorkflow stopped due to failure in Step 2.")
