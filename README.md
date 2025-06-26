@@ -48,6 +48,23 @@ Each tab follows this column structure:
 
 The logical repository checks script automatically fetches and updates data from the labeling tool API. This integration provides:
 
+#### Data Fetched from Labeling Tool
+
+1. **Total Conversations (Column P)**
+   - Total number of conversations/tasks in the labeling tool
+   - Fetched from `countOfConversations` field in batch data
+
+2. **Improper Tasks Count (Column Q)**
+   - Number of tasks marked as "improper" in the labeling tool
+   - Fetched from `batchStats.improper` field
+
+3. **Addition Date (Column S)**
+   - Date when the repository was added to the labeling tool
+   - Parsed from `createdAt` field in batch data
+
+4. **Batch Link (Column R)**
+   - Direct link to view the batch in the labeling tool
+   - Format: `https://eval.turing.com/batches/{batch_id}/view`
 
 #### Update Logic
 
@@ -101,39 +118,50 @@ This stage evaluates repositories based on objective criteria:
 
 #### Check Criteria
 
-1. **SWE Bench Duplicate Check**
-   - Ensures the repository doesn't already exist in SWE Bench
-   - Checks against the language-specific tab in the main spreadsheet
+1. **Labeling Tool Duplicate Check**
+   - Ensures the repository doesn't already exist in the labeling tool
+   - Checks against the language-specific project in the labeling tool
+   - Converts repository names from `USER/REPO` to `USER__REPO` format
 
-2. **Language Check**
+2. **Sheet Duplicate Check**
+   - Identifies duplicate repositories within the same sheet
+   - Marks all instances except the first occurrence as duplicates
+   - Prevents processing of duplicate entries
+
+3. **Language Check**
    - Verifies the target language constitutes ≥70% of the codebase
    - Uses GitHub's language detection API
+   - Language-specific thresholds for each target language
 
-3. **Star Rating Check**
+4. **Star Rating Check**
    - Ensures the repository has ≥400 GitHub stars
    - Indicates community adoption and quality
 
-4. **Lines of Code (LOC) Check**
-   - Dynamic requirement based on star count
-   - Formula: `required_LOC = max(0, 100,000 - (stars × 200))`
-   - Examples:
-     - 400 stars → 20,000 LOC minimum
-     - 800 stars → 60,000 LOC minimum
-     - 1500+ stars → 0 LOC minimum
+5. **Lines of Code (LOC) Check**
+   - Dynamic requirement based on star count using language-specific thresholds
+   - Examples for Go (current target):
+     - 400 stars → 150,000 LOC minimum
+     - 450 stars → 120,000 LOC minimum
+     - 500 stars → 100,000 LOC minimum
+     - 800 stars → 75,000 LOC minimum
+     - 1500+ stars → 60,000 LOC minimum
 
 #### Configuration
 
-The script uses these default settings:
-- **Target Language**: Java (configurable)
+The script uses these language-specific settings:
+- **Target Language**: Go (configurable)
 - **Minimum Language Percentage**: 70%
 - **Minimum Stars**: 400
-- **LOC Calculation**: Dynamic based on star count
+- **LOC Calculation**: Dynamic based on star count with language-specific thresholds
+- **Labeling Tool Project ID**: 43 (Go project)
 
 #### Output
 
 - Updates the spreadsheet with evaluation results
-- Marks repositories as "Yes" or "No" in the "Added" column
+- Marks repositories as "Yes", "No", or "Manual" in the "Logical Checks" column
+- "Manual" indicates LOC check errors requiring human review
 - Provides detailed failure reasons for rejected repositories
+- Automatically updates labeling tool data (conversations, improper counts, dates)
 
 ### Stage 2: Agentic PR Checks
 
@@ -147,10 +175,12 @@ This stage evaluates repositories that passed logical checks by analyzing their 
    - Ensures PRs contain appropriate file types for the target language
    - Validates test file requirements (≥2 test files, ≥2 source files)
    - Checks for language-specific dependency files
+   - Prevents files from other programming languages
 
 2. **Issue Quality Evaluation**
    - Uses OpenAI's LLM to evaluate linked GitHub issues
    - Assesses if issues are "Good PR" candidates
+   - Analyzes issue clarity and actionability
 
 #### "Good PR" Criteria
 
@@ -177,12 +207,14 @@ The script supports multiple languages with specific configurations:
 - **LLM Model**: `o3-mini` (OpenAI)
 - **Merged After Date**: November 1, 2024
 - **Debug Mode**: Available for testing specific repositories
+- **Target Language**: Java (configurable)
 
 #### Output
 
 - Updates the spreadsheet with PR analysis results
 - Generates CSV reports in `repo_evaluator/pr_reports/`
 - Marks repositories as "Yes" or "No" in the "Good PRs > 2" column
+- Provides detailed PR analysis and issue evaluation results
 
 ## 🚀 Running the Scripts
 
@@ -251,10 +283,10 @@ To change the target language, modify the `TARGET_LANGUAGE` variable in the resp
 
 ```python
 # In logical_repo_checks.py
-TARGET_LANGUAGE = "Python"  # Options: Java, JavaScript, Python, Go
+TARGET_LANGUAGE = "Python"  # Options: 'Java', 'JavaScript', 'Python', 'Go'
 
 # In agentic_pr_checker.py  
-TARGET_LANGUAGE = "Python"  # Options: Java, JavaScript, TypeScript, Python, Go
+TARGET_LANGUAGE = "Python"  # Options: 'Java', 'JavaScript', 'TypeScript', 'Python', 'Go'
 ```
 
 ### API Configuration
@@ -280,6 +312,7 @@ Both scripts automatically update the spreadsheet with:
 - Detailed metrics
 - Failure reasons
 - Processing timestamps
+- Labeling tool integration data
 
 ### Generated Reports
 
@@ -296,6 +329,7 @@ Both scripts provide detailed console output including:
 - Evaluation details
 - Error messages
 - Summary statistics
+- Column mapping information
 
 ## 🛠️ Troubleshooting
 
@@ -305,6 +339,7 @@ Both scripts provide detailed console output including:
 2. **Sheet Access**: Ensure the service account has proper permissions
 3. **API Keys**: Verify all API keys are valid and have appropriate permissions
 4. **Language Detection**: Some repositories may have ambiguous language detection
+5. **Column Mapping**: Scripts automatically detect column headers and fall back to defaults
 
 ### Debug Mode
 
@@ -319,4 +354,6 @@ DEBUG_REPO_URL = "https://github.com/your-repo/name"
 - The workflow is designed to be resumable - it only processes unprocessed rows
 - Both scripts include comprehensive error handling and logging
 - The system supports multiple programming languages with language-specific configurations
-- Results are automatically saved to Google Sheets for easy tracking and collaboration 
+- Results are automatically saved to Google Sheets for easy tracking and collaboration
+- Labeling tool integration provides real-time data synchronization
+- Duplicate detection prevents processing of existing repositories 
