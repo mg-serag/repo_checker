@@ -216,6 +216,81 @@ The script supports multiple languages with specific configurations:
 - Marks repositories as "Yes" or "No" in the "Good PRs > 2" column
 - Provides detailed PR analysis and issue evaluation results
 
+### Stage 3: Labeling Tool Data Synchronization
+
+**Script**: `src/update_from_LT.py`
+
+This script synchronizes data between the Google Sheets and the labeling tool, ensuring that repository information is up-to-date and consistent.
+
+#### Purpose
+
+The script performs intelligent updates to the spreadsheet based on current labeling tool data:
+
+1. **For repositories marked as "Yes" (already added):**
+   - Refreshes task counts and improper counts from labeling tool
+   - Updates batch links if missing or incorrect
+   - Updates addition dates from labeling tool records
+   - Ensures all labeling tool data is current
+
+2. **For repositories marked as "No" or empty:**
+   - Checks if repository exists in labeling tool
+   - If found: marks as "Yes" and populates all labeling tool data
+   - If not found: confirms "No" status and clears labeling tool fields
+
+#### Supported Languages
+
+The script is configured to update these language-specific sheets:
+
+| Language | Sheet Name | Project ID | Description |
+|----------|------------|------------|-------------|
+| JavaScript/TypeScript | JS/TS | 41 | JavaScript/TypeScript repositories |
+| Java | Java | 42 | Java repositories |
+
+#### Columns Updated
+
+The script updates these columns in the spreadsheet:
+
+| Column | Header | Description | Update Logic |
+|--------|--------|-------------|--------------|
+| O | Added | Whether repo was added to final list | Set to "Yes"/"No" based on LT presence |
+| P | Tasks Count in LT | Total conversations in labeling tool | Refreshed from `countOfConversations` |
+| Q | Improper in LT | Count of improper tasks in labeling tool | Refreshed from `batchStats.improper` |
+| R | Batch Link | Direct link to labeling tool batch | Generated as `https://eval.turing.com/batches/{id}/view` |
+| S | Addition Date | Date when repo was added to labeling tool | Parsed from `createdAt` field |
+
+#### Configuration
+
+The script uses these configuration settings:
+
+```python
+# Sheets to update and their project IDs
+SHEETS_TO_UPDATE = {
+    'JS/TS': {
+        'project_id': 41,
+        'description': 'JavaScript/TypeScript repositories'
+    },
+    'Java': {
+        'project_id': 42,
+        'description': 'Java repositories'
+    }
+}
+```
+
+#### Repository Name Conversion
+
+The script automatically converts repository names between formats:
+- **GitHub format**: `user/repo`
+- **Labeling tool format**: `user__repo`
+
+Example: `tensorflow/tensorflow` → `tensorflow__tensorflow`
+
+#### Output
+
+- Updates spreadsheet with current labeling tool data
+- Provides detailed logging of all changes made
+- Shows column mapping results for transparency
+- Reports summary statistics of updates performed
+
 ## 🚀 Running the Scripts
 
 ### Prerequisites
@@ -248,29 +323,95 @@ cd src
 python agentic_pr_checker.py
 ```
 
+#### Labeling Tool Data Synchronization
+```bash
+cd src
+python update_from_LT.py
+```
+
+#### Repository Scanning (Standalone)
+```bash
+cd src
+python scan_github_repos.py
+```
+
 ### Running the Complete Workflow
+
+**⚠️ Note: The main workflow orchestration is currently under development.**
 
 ```bash
 python main.py
 ```
 
-This runs both stages in sequence:
-1. Logical repository checks
-2. Agentic PR checks
+Currently, `main.py` contains a TODO list for implementing the complete workflow orchestration. The individual scripts must be run separately until the main workflow is fully implemented.
+
+## 🔄 Planned Improvements
+
+### Task 1: Complete Workflow Orchestration
+
+The `main.py` script needs to be enhanced to orchestrate the entire repository evaluation workflow:
+
+#### Current State
+- Individual scripts work independently
+- Manual execution required for each stage
+- No centralized error handling or rollback mechanisms
+
+#### Planned Enhancements
+- **Unified Workflow**: Single command to run all stages in sequence
+- **Error Handling**: Proper error handling and rollback mechanisms
+- **Progress Tracking**: Real-time progress monitoring and reporting
+- **Resume Capability**: Ability to resume interrupted workflows
+- **Configuration Management**: Centralized configuration for all stages
+
+#### Workflow Stages
+1. **Repository Scanning** - Discover new repositories
+2. **Logical Repository Checks** - Evaluate repository metadata
+3. **Agentic PR Checks** - AI-powered PR analysis
+4. **Labeling Tool Synchronization** - Update labeling tool data
+
+### Task 2: Repository Scanning and Sheet Transfer
+
+Integration of the repository scanning script with automatic sheet transfer capabilities:
+
+#### Current State
+- Repository scanning works independently
+- Manual sheet management required
+- No automatic language-based transfers
+
+#### Planned Enhancements
+- **Automatic Sheet Transfer**: Move repositories to correct language sheets
+- **Language Detection**: Validate repository language before transfer
+- **Duplicate Prevention**: Detect and handle duplicates across sheets
+- **Data Integrity**: Ensure no data loss during transfers
+- **Audit Trail**: Log all transfer operations
+
+#### Transfer Logic Examples
+- Python majority repo in Java sheet → Transfer to Python sheet
+- Java majority repo in JS/TS sheet → Transfer to Java sheet
+- JavaScript majority repo in Python sheet → Transfer to JS/TS sheet
+
+#### Implementation Requirements
+- Modify individual scripts to support orchestration
+- Add configuration file for workflow settings
+- Implement comprehensive logging and monitoring
+- Add validation and rollback mechanisms
+- Ensure data consistency across operations
 
 ## 📁 File Structure
 
 ```
 repo_checker/
 ├── src/
+│   ├── scan_github_repos.py      # Repository discovery and scanning
 │   ├── logical_repo_checks.py    # Stage 1: Repository evaluation
 │   ├── agentic_pr_checker.py     # Stage 2: PR evaluation
+│   ├── update_from_LT.py          # Stage 3: Labeling tool data synchronization
 │   ├── config.json              # GitHub tokens
 │   ├── creds.json               # Google Sheets credentials
 │   └── __init__.py
 ├── repo_evaluator/
 │   └── pr_reports/              # Generated PR analysis reports
-├── main.py                      # Main workflow orchestrator
+├── main.py                      # Main workflow orchestrator (TODO: needs implementation)
 ├── requirements.txt             # Python dependencies
 └── README.md                    # This file
 ```
