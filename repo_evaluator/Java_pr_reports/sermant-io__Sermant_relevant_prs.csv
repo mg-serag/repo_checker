@@ -1,0 +1,16 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1795,https://github.com/sermant-io/Sermant/pull/1795,1789,https://github.com/sermant-io/Sermant/issues/1789,1569,Good PR,"The issue clearly outlines a feature request with specific actionable items (TLS, JWT authentication, authorization policy) for secure communication. It is not a revert, question, or vague request, making it suitable for a Good PR."
+1697,https://github.com/sermant-io/Sermant/pull/1697,1515,https://github.com/sermant-io/Sermant/issues/1515,823,Good PR,"The issue clearly outlines the value, objective, and roadmap for implementing xDS protocol support, providing actionable and specific steps for development without being a revert, vague request, or simple question."
+1700,https://github.com/sermant-io/Sermant/pull/1700,1515,https://github.com/sermant-io/Sermant/issues/1515,1604,Not Checked,
+1756,https://github.com/sermant-io/Sermant/pull/1756,1466,https://github.com/sermant-io/Sermant/issues/1466,44,Not Checked,
+1743,https://github.com/sermant-io/Sermant/pull/1743,1742,https://github.com/sermant-io/Sermant/issues/1742,296,Not Checked,
+1660,https://github.com/sermant-io/Sermant/pull/1660,1659,https://github.com/sermant-io/Sermant/issues/1659,775,Not Checked,
+1730,https://github.com/sermant-io/Sermant/pull/1730,1729,https://github.com/sermant-io/Sermant/issues/1729,585,Not Checked,
+1725,https://github.com/sermant-io/Sermant/pull/1725,1724,https://github.com/sermant-io/Sermant/issues/1724,408,Not Checked,
+1693,https://github.com/sermant-io/Sermant/pull/1693,1515,https://github.com/sermant-io/Sermant/issues/1515,662,Not Checked,
+1692,https://github.com/sermant-io/Sermant/pull/1692,1687,https://github.com/sermant-io/Sermant/issues/1687,22,Not Checked,
+1683,https://github.com/sermant-io/Sermant/pull/1683,1687,https://github.com/sermant-io/Sermant/issues/1687,22,Not Checked,
+1678,https://github.com/sermant-io/Sermant/pull/1678,1646,https://github.com/sermant-io/Sermant/issues/1646,515,Not Checked,
+1689,https://github.com/sermant-io/Sermant/pull/1689,1680,https://github.com/sermant-io/Sermant/issues/1680,357,Not Checked,
+1681,https://github.com/sermant-io/Sermant/pull/1681,1680,https://github.com/sermant-io/Sermant/issues/1680,381,Not Checked,
+1679,https://github.com/sermant-io/Sermant/pull/1679,1515,https://github.com/sermant-io/Sermant/issues/1515,687,Not Checked,

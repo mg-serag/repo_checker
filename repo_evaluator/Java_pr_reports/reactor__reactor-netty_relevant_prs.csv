@@ -1,0 +1,4 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+3735,https://github.com/reactor/reactor-netty/pull/3735,781,https://github.com/reactor/reactor-netty/issues/781,73,Bad PR,"The issue is framed as a question rather than a clear and actionable problem or feature request, making it unsuitable for a 'Good PR'."
+3644,https://github.com/reactor/reactor-netty/pull/3644,3620,https://github.com/reactor/reactor-netty/issues/3620,589,Bad PR,Issue body is too short.
+3517,https://github.com/reactor/reactor-netty/pull/3517,3501,https://github.com/reactor/reactor-netty/issues/3501,175,Bad PR,"The issue is framed as a question asking for clarification rather than presenting a clear, actionable problem. The report is more of an inquiry about expected behavior rather than a definitive bug or feature request."

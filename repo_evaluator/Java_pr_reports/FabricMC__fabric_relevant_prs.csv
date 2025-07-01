@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+4119,https://github.com/FabricMC/fabric/pull/4119,3908,https://github.com/FabricMC/fabric/issues/3908,907,Bad PR,"The issue is framed as a question seeking clarification and discussing behavior rather than specifying a clear, actionable problem or feature request. It resembles a support query rather than a directly actionable PR issue."

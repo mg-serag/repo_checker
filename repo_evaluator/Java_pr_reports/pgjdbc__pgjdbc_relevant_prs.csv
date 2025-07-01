@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+3369,https://github.com/pgjdbc/pgjdbc/pull/3369,3365,https://github.com/pgjdbc/pgjdbc/issues/3365,260,Good PR,"The issue provides a detailed, reproducible scenario along with logs that clearly describe a regression, and it's not about reverting changes or asking a vague question. This meets the criteria for a 'Good PR'."

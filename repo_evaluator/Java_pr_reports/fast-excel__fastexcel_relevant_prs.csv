@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+353,https://github.com/fast-excel/fastexcel/pull/353,352,https://github.com/fast-excel/fastexcel/issues/352,452,Good PR,"The issue clearly describes a specific enhancement (adding CSV support via new parameters) and provides an actionable plan, without being a revert or a vague question."

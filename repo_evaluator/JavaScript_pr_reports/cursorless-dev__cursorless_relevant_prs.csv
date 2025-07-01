@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1723,https://github.com/cursorless-dev/cursorless/pull/1723,1658,https://github.com/cursorless-dev/cursorless/issues/1658,33,Bad PR,"The issue is vague and lacks a clear, actionable problem or feature request. It discusses an interesting observation but does not define specific steps for resolution or a well-defined problem to address. Additionally, it suggests that the issue may remain open indefinitely and relies on further research rather than providing an actionable objective."

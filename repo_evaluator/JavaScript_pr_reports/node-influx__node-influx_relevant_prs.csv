@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+717,https://github.com/node-influx/node-influx/pull/717,676,https://github.com/node-influx/node-influx/issues/676,60,Good PR,"The issue clearly describes a specific, actionable feature request by explaining the problem, expected behavior, and the necessary change without being a revert or a vague question."

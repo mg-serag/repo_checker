@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+3905,https://github.com/kubernetes-client/java/pull/3905,3901,https://github.com/kubernetes-client/java/issues/3901,1860,Bad PR,"The issue is a tracking issue for a release, not a clear, actionable problem or feature. It doesn't provide a specific task for developers to work on."

@@ -1,0 +1,6 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+16699,https://github.com/cgeo/cgeo/pull/16699,16662,https://github.com/cgeo/cgeo/issues/16662,228,Good PR,"The issue clearly describes the problem with actionable reproduction steps and expected behavior, and it is not a revert or vague question."
+16484,https://github.com/cgeo/cgeo/pull/16484,16459,https://github.com/cgeo/cgeo/issues/16459,1474,Good PR,"The issue provides detailed reproduction steps with contextual information and screenshots, making it clear and actionable. It isn't a revert or a vague question, so it meets the criteria for a Good PR."
+16420,https://github.com/cgeo/cgeo/pull/16420,16415,https://github.com/cgeo/cgeo/issues/16415,244,Not Checked,
+16422,https://github.com/cgeo/cgeo/pull/16422,16415,https://github.com/cgeo/cgeo/issues/16415,244,Not Checked,
+16315,https://github.com/cgeo/cgeo/pull/16315,16300,https://github.com/cgeo/cgeo/issues/16300,312,Not Checked,

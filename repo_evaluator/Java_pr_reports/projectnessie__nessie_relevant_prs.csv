@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+9945,https://github.com/projectnessie/nessie/pull/9945,9944,https://github.com/projectnessie/nessie/issues/9944,146,Good PR,"The issue provides a clear reproduction scenario with logs and a test case, and does not involve reverting changes or vague requests, making it actionable for developers."

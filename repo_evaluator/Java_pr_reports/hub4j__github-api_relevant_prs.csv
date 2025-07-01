@@ -1,0 +1,3 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2056,https://github.com/hub4j/github-api/pull/2056,2039,https://github.com/hub4j/github-api/issues/2039,200,Good PR,"The issue clearly describes a specific, actionable feature request to enable auto-merge using GraphQL, and it is neither a revert nor a vague help request."
+2059,https://github.com/hub4j/github-api/pull/2059,1405,https://github.com/hub4j/github-api/issues/1405,189,Good PR,"The issue provides clear and actionable details with a reproducible bug, expected behavior, and sufficient context. It is not a revert, a vague request, or a question, making it suitable for a Good PR."

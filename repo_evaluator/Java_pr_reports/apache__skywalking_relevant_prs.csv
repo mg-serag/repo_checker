@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+12910,https://github.com/apache/skywalking/pull/12910,12859,https://github.com/apache/skywalking/issues/12859,153,Good PR,"The issue clearly describes an actionable feature request with enough context and specific use cases. It is not a request to revert changes or simply a vague question, making it a suitable candidate for a Good PR."

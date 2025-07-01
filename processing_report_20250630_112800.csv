@@ -1,0 +1,13 @@
+PROCESSING SUMMARY REPORT
+Generated: 2025-06-30 11:28:00
+Total Repositories Processed: 1
+Successful: 1
+Failed: 0
+
+TOTALS ACROSS ALL REPOSITORIES
+Initial PRs,After Date Filter,After Good PRs Filter,After LT Dedup,After Local Dedup,Final PRs
+209,74,2,2,2,2
+
+DETAILED REPOSITORY STATISTICS
+Repository,Language,Initial PRs,After Date Filter,After Good PRs Filter,After LT Dedup,After Local Dedup,Final PRs,Status,Error
+alibaba/nacos,Java,209,74,2,2,2,2,Success,

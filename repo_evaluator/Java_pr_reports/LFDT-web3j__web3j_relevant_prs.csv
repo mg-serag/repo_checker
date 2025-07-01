@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2192,https://github.com/LFDT-web3j/web3j/pull/2192,2180,https://github.com/LFDT-web3j/web3j/issues/2180,80,Good PR,"The issue clearly describes a specific, actionable problem with ample context, examples, and proposed enhancements. It is not a request for a revert or a vague question, making it suitable for a Good PR."

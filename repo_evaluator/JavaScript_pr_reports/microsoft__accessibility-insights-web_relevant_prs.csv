@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+7605,https://github.com/microsoft/accessibility-insights-web/pull/7605,7598,https://github.com/microsoft/accessibility-insights-web/issues/7598,30,Bad PR,"The issue is not clearly actionable as it poses a vague question about hiding false positives without providing specific details or solutions. It does not focus on a singular, well-defined problem or feature request, and it lacks clarity in expected behavior. While it provides some context, it does not meet the criteria for a Good PR."

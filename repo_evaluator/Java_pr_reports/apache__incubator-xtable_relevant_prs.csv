@@ -1,0 +1,6 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+670,https://github.com/apache/incubator-xtable/pull/670,668,https://github.com/apache/incubator-xtable/issues/668,51,Good PR,"The issue clearly describes a reproducible bug (conversion failing with a NotSupportedException on multi-level partitions), is actionable, and does not represent a revert or a vague question."
+653,https://github.com/apache/incubator-xtable/pull/653,652,https://github.com/apache/incubator-xtable/issues/652,243,Bad PR,"The issue is phrased as a question and lacks a clear, actionable problem statement, making it too vague to be considered a 'Good PR'."
+569,https://github.com/apache/incubator-xtable/pull/569,40,https://github.com/apache/incubator-xtable/issues/40,300,Good PR,The issue clearly describes a specific improvement (updating the rollback behavior) and provides actionable context without simply reverting changes or asking a vague question.
+617,https://github.com/apache/incubator-xtable/pull/617,608,https://github.com/apache/incubator-xtable/issues/608,45,Not Checked,
+596,https://github.com/apache/incubator-xtable/pull/596,595,https://github.com/apache/incubator-xtable/issues/595,119,Not Checked,

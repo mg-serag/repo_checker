@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+84,https://github.com/digitalpetri/modbus/pull/84,82,https://github.com/digitalpetri/modbus/issues/82,49,Good PR,"The issue clearly describes the problem of having a split package conflict and proposes a specific, actionable solution by moving classes to a subpackage. It is not a revert, question, or vague request."

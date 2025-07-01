@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+5249,https://github.com/pnp/cli-microsoft365/pull/5249,5248,https://github.com/pnp/cli-microsoft365/issues/5248,53,Good PR,"The issue provides a clear and actionable problem, specifying the command to be refactored and the corresponding utility function. It is focused on a single issue and does not request a revert or pose a vague question. The content is primarily in English."

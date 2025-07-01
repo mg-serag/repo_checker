@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+9020,https://github.com/broadinstitute/gatk/pull/9020,6242,https://github.com/broadinstitute/gatk/issues/6242,923,Good PR,"The issue clearly describes a specific problem with contextual information and reproducible details, and it is not a revert or a vague question, making it actionable for someone to address."

@@ -1,0 +1,4 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+7076,https://github.com/typetools/checker-framework/pull/7076,6740,https://github.com/typetools/checker-framework/issues/6740,257,Good PR,"The issue clearly outlines a specific regression with reproduction steps and error messages, making it actionable. It does not request a revert or contain vague help requests."
+7052,https://github.com/typetools/checker-framework/pull/7052,6520,https://github.com/typetools/checker-framework/issues/6520,132,Good PR,"The issue clearly describes a specific compilation failure with a code snippet and states the expected behavior. It's actionable, not a revert, and not a vague question."
+7002,https://github.com/typetools/checker-framework/pull/7002,6891,https://github.com/typetools/checker-framework/issues/6891,305,Not Checked,

@@ -1,0 +1,6 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1477,https://github.com/eclipse-milo/milo/pull/1477,1476,https://github.com/eclipse-milo/milo/issues/1476,48,Good PR,"The issue clearly describes a specific problem with type mismatches between boxed and unboxed types, providing actionable context and references to pinpoint the error. It is not a revert or vague request."
+1404,https://github.com/eclipse-milo/milo/pull/1404,166,https://github.com/eclipse-milo/milo/issues/166,2020,Bad PR,"The issue describes a missing class as a prerequisite for HTTPS transport but does not provide a clear, actionable plan for implementation. It reads more like a suggestion or note for future development rather than a specific task ready for a PR."
+1368,https://github.com/eclipse-milo/milo/pull/1368,1367,https://github.com/eclipse-milo/milo/issues/1367,2622,Good PR,"The issue clearly defines an actionable task to improve and test DynamicTypes and their codecs, and while it includes a consideration for naming, it is not vague or merely a question."
+1374,https://github.com/eclipse-milo/milo/pull/1374,1371,https://github.com/eclipse-milo/milo/issues/1371,2854,Not Checked,
+1385,https://github.com/eclipse-milo/milo/pull/1385,1384,https://github.com/eclipse-milo/milo/issues/1384,126,Not Checked,

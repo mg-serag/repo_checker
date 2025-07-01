@@ -1,0 +1,9 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+18025,https://github.com/tailwindlabs/tailwindcss/pull/18025,17974,https://github.com/tailwindlabs/tailwindcss/issues/17974,281,Good PR,"The issue clearly describes a specific problem (logical operators in Vue files break after upgrade) with actionable details and sufficient context, and it is not a revert, question, or vague request."
+18017,https://github.com/tailwindlabs/tailwindcss/pull/18017,16156,https://github.com/tailwindlabs/tailwindcss/issues/16156,55,Good PR,"The issue clearly describes a specific bug with detailed context and reproduction steps, making it actionable. It is not a revert, a question, or a vague request."
+16774,https://github.com/tailwindlabs/tailwindcss/pull/16774,16725,https://github.com/tailwindlabs/tailwindcss/issues/16725,70,Not Checked,
+16072,https://github.com/tailwindlabs/tailwindcss/pull/16072,16037,https://github.com/tailwindlabs/tailwindcss/issues/16037,24,Not Checked,
+16300,https://github.com/tailwindlabs/tailwindcss/pull/16300,16298,https://github.com/tailwindlabs/tailwindcss/issues/16298,85,Not Checked,
+15542,https://github.com/tailwindlabs/tailwindcss/pull/15542,15501,https://github.com/tailwindlabs/tailwindcss/issues/15501,193,Not Checked,
+15228,https://github.com/tailwindlabs/tailwindcss/pull/15228,15219,https://github.com/tailwindlabs/tailwindcss/issues/15219,112,Not Checked,
+14877,https://github.com/tailwindlabs/tailwindcss/pull/14877,14784,https://github.com/tailwindlabs/tailwindcss/issues/14784,272,Not Checked,

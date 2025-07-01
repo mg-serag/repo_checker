@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+11529,https://github.com/jestjs/jest/pull/11529,11483,https://github.com/jestjs/jest/issues/11483,33,Good PR,"The issue describes a specific problem with the `addEventHandler` function in jest-circus and provides clear steps to reproduce the issue, including links to relevant code and an explanation of the desired behavior. It is focused on a single issue and presents an actionable request for improvement, which meets all the criteria for a 'Good PR'."

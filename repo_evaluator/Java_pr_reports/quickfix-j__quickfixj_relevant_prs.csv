@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+674,https://github.com/quickfix-j/quickfixj/pull/674,675,https://github.com/quickfix-j/quickfixj/issues/675,78,Good PR,"The issue clearly describes a specific enhancement needed, provides context, and includes reference implementation details. It is actionable and not a revert, a vague request, or just a question."

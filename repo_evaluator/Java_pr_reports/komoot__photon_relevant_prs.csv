@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+870,https://github.com/komoot/photon/pull/870,835,https://github.com/komoot/photon/issues/835,29,Good PR,"The issue clearly outlines a specific problem with actionable details, including coordinates and behavior differences between Photon and Nominatim, and it does not involve reverting changes or merely asking a vague question."

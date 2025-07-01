@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+4563,https://github.com/codeceptjs/CodeceptJS/pull/4563,4560,https://github.com/codeceptjs/CodeceptJS/issues/4560,281,Bad PR,"The issue lacks detail and context, making it unclear and not actionable enough for a developer to proceed. It does not explain why the removal of the devtools dependency is necessary or provide enough background on the problem at hand."

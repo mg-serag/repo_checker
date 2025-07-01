@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1493,https://github.com/Tencent/spring-cloud-tencent/pull/1493,1369,https://github.com/Tencent/spring-cloud-tencent/issues/1369,77,Bad PR,Issue body is too short.

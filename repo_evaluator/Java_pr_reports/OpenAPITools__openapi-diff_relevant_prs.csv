@@ -1,0 +1,4 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+746,https://github.com/OpenAPITools/openapi-diff/pull/746,483,https://github.com/OpenAPITools/openapi-diff/issues/483,81,Good PR,"The issue clearly describes a specific problem with detecting changes to the 'multipleOf' keyword, provides concrete examples, and does not involve a revert or a vague request."
+671,https://github.com/OpenAPITools/openapi-diff/pull/671,666,https://github.com/OpenAPITools/openapi-diff/issues/666,346,Good PR,"The issue clearly describes a specific improvement (handling 'example' and 'examples' fields) with actionable details, making it a well-defined feature request rather than a vague, revert, or question."
+743,https://github.com/OpenAPITools/openapi-diff/pull/743,485,https://github.com/OpenAPITools/openapi-diff/issues/485,39,Not Checked,

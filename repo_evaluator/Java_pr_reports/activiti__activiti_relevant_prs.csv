@@ -1,0 +1,3 @@
+pr_id,pr_url,issue_id,issue_url,agent_result,agent_comment
+4908,https://github.com/activiti/activiti/pull/4908,4898,https://github.com/activiti/activiti/issues/4898,Good PR,"The issue clearly describes the specific bugfix regarding updating HistoricalTasks when a task's name changes. It is actionable, not a revert, and not merely a question or vague request."
+4907,https://github.com/activiti/activiti/pull/4907,4898,https://github.com/activiti/activiti/issues/4898,Good PR,"The issue clearly details a specific bug fix related to updating HistoricalTasks, includes context and rationale for the change, and is not a revert or vague request. It meets the criteria for a 'Good PR.'"

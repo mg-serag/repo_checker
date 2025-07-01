@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+18240,https://github.com/runelite/runelite/pull/18240,18236,https://github.com/runelite/runelite/issues/18236,1029,Good PR,"The issue clearly describes an actionable feature related to dynamic resource area cost, provides context and clear steps, and is not a simple revert or a vague documentation/usage request."

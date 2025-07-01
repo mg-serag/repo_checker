@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1169,https://github.com/networknt/json-schema-validator/pull/1169,1167,https://github.com/networknt/json-schema-validator/issues/1167,21,Good PR,"The issue provides a clear and actionable bug description with specific code examples and expected outcomes, and it is not a request to revert changes nor a vague question."

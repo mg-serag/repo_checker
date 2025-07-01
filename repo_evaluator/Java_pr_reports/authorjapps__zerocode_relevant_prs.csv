@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+713,https://github.com/authorjapps/zerocode/pull/713,704,https://github.com/authorjapps/zerocode/issues/704,121,Bad PR,"The issue is vague and simply asks for someone to 'provide the fix' without clear, actionable detail. It lacks context and clear steps for resolving the error, making it unsuitable as a 'Good PR'."

@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+638,https://github.com/apache/mina-sshd/pull/638,636,https://github.com/apache/mina-sshd/issues/636,266,Good PR,"This issue clearly describes the bug with reproduction steps, expected behavior, and detailed context. It is actionable, not a revert nor a vague question, and thus qualifies as a 'Good PR'."

@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1277,https://github.com/TeamNewPipe/NewPipeExtractor/pull/1277,1264,https://github.com/TeamNewPipe/NewPipeExtractor/issues/1264,163,Good PR,"The issue is clear and actionable, providing specific tasks needed to fix the tests and CI. It is not a revert or vague question, thus meeting the criteria for a 'Good PR'."

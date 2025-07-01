@@ -1,0 +1,22 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+3897,https://github.com/FuelLabs/fuels-ts/pull/3897,3706,https://github.com/FuelLabs/fuels-ts/issues/3706,139,Good PR,"The issue clearly describes a specific problem with the assembly of transaction operations and provides context from a previous discussion. It indicates that the current implementation is faulty and suggests a direction for resolution, making it actionable and not merely a revert or vague question."
+3878,https://github.com/FuelLabs/fuels-ts/pull/3878,3877,https://github.com/FuelLabs/fuels-ts/issues/3877,97,Good PR,"The issue provides clear, actionable steps with references and examples. It does not involve reverting changes or just asking a question; instead, it outlines a specific implementation detail, making it a strong candidate for a good PR."
+3836,https://github.com/FuelLabs/fuels-ts/pull/3836,3645,https://github.com/FuelLabs/fuels-ts/issues/3645,314,Not Checked,
+3735,https://github.com/FuelLabs/fuels-ts/pull/3735,3669,https://github.com/FuelLabs/fuels-ts/issues/3669,1076,Not Checked,
+3697,https://github.com/FuelLabs/fuels-ts/pull/3697,3696,https://github.com/FuelLabs/fuels-ts/issues/3696,185,Not Checked,
+3720,https://github.com/FuelLabs/fuels-ts/pull/3720,3715,https://github.com/FuelLabs/fuels-ts/issues/3715,101,Not Checked,
+3726,https://github.com/FuelLabs/fuels-ts/pull/3726,3669,https://github.com/FuelLabs/fuels-ts/issues/3669,305,Not Checked,
+3709,https://github.com/FuelLabs/fuels-ts/pull/3709,3669,https://github.com/FuelLabs/fuels-ts/issues/3669,101,Not Checked,
+3689,https://github.com/FuelLabs/fuels-ts/pull/3689,3665,https://github.com/FuelLabs/fuels-ts/issues/3665,67,Not Checked,
+3712,https://github.com/FuelLabs/fuels-ts/pull/3712,3654,https://github.com/FuelLabs/fuels-ts/issues/3654,32,Not Checked,
+3638,https://github.com/FuelLabs/fuels-ts/pull/3638,3614,https://github.com/FuelLabs/fuels-ts/issues/3614,118,Not Checked,
+3648,https://github.com/FuelLabs/fuels-ts/pull/3648,3474,https://github.com/FuelLabs/fuels-ts/issues/3474,156,Not Checked,
+3580,https://github.com/FuelLabs/fuels-ts/pull/3580,3476,https://github.com/FuelLabs/fuels-ts/issues/3476,94,Not Checked,
+3540,https://github.com/FuelLabs/fuels-ts/pull/3540,3489,https://github.com/FuelLabs/fuels-ts/issues/3489,131,Not Checked,
+3551,https://github.com/FuelLabs/fuels-ts/pull/3551,3520,https://github.com/FuelLabs/fuels-ts/issues/3520,1507,Not Checked,
+3559,https://github.com/FuelLabs/fuels-ts/pull/3559,3536,https://github.com/FuelLabs/fuels-ts/issues/3536,65,Not Checked,
+3539,https://github.com/FuelLabs/fuels-ts/pull/3539,3535,https://github.com/FuelLabs/fuels-ts/issues/3535,138,Not Checked,
+3552,https://github.com/FuelLabs/fuels-ts/pull/3552,3516,https://github.com/FuelLabs/fuels-ts/issues/3516,55,Not Checked,
+3503,https://github.com/FuelLabs/fuels-ts/pull/3503,3488,https://github.com/FuelLabs/fuels-ts/issues/3488,54,Not Checked,
+3383,https://github.com/FuelLabs/fuels-ts/pull/3383,3356,https://github.com/FuelLabs/fuels-ts/issues/3356,32,Not Checked,
+3385,https://github.com/FuelLabs/fuels-ts/pull/3385,2449,https://github.com/FuelLabs/fuels-ts/issues/2449,132,Not Checked,

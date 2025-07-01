@@ -1,0 +1,3 @@
+pr_id,pr_url,issue_id,issue_url,agent_result,agent_comment
+18996,https://github.com/pulumi/pulumi/pull/18996,18984,https://github.com/pulumi/pulumi/issues/18984,Good PR,"The issue clearly explains the problem (automatically inferring the component provider from module exports), provides context, and outlines the intended behavior. It isn't a revert, nor is it a vague or discussion-based issue, making it actionable for developers."
+18152,https://github.com/pulumi/pulumi/pull/18152,18133,https://github.com/pulumi/pulumi/issues/18133,Good PR,"The issue clearly describes a specific problem with the current behavior, provides detailed context and a reproducible code example, and is actionable without being a revert or a vague question."

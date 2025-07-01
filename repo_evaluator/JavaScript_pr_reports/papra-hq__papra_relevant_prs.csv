@@ -1,0 +1,7 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+317,https://github.com/papra-hq/papra/pull/317,53,https://github.com/papra-hq/papra/issues/53,669,Bad PR,Issue body is too short.
+150,https://github.com/papra-hq/papra/pull/150,143,https://github.com/papra-hq/papra/issues/143,468,Bad PR,"The issue does not provide enough context or details about the problem being addressed or specific actions to be taken. It appears to be a generic link to documentation without a clear and actionable feature request or problem description. Moreover, it does not focus on a single well-defined issue."
+140,https://github.com/papra-hq/papra/pull/140,114,https://github.com/papra-hq/papra/issues/114,90,Bad PR,Issue body is too short.
+134,https://github.com/papra-hq/papra/pull/134,132,https://github.com/papra-hq/papra/issues/132,169,Bad PR,Issue body is too short.
+107,https://github.com/papra-hq/papra/pull/107,27,https://github.com/papra-hq/papra/issues/27,324,Bad PR,Issue body is too short.
+103,https://github.com/papra-hq/papra/pull/103,31,https://github.com/papra-hq/papra/issues/31,939,Bad PR,Issue body is too short.

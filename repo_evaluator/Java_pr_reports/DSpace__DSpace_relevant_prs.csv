@@ -1,0 +1,8 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+9849,https://github.com/DSpace/DSpace/pull/9849,9087,https://github.com/DSpace/DSpace/issues/9087,1802,Good PR,"The issue clearly describes a specific, actionable problem with useful context, and it's not a revert, question, or vague documentation request."
+10685,https://github.com/DSpace/DSpace/pull/10685,9904,https://github.com/DSpace/DSpace/issues/9904,58,Good PR,"The issue clearly describes a specific improvement by identifying the problematic dependency and proposing a targeted replacement, and it is neither a revert request nor a vague question."
+9844,https://github.com/DSpace/DSpace/pull/9844,5590,https://github.com/DSpace/DSpace/issues/5590,689,Not Checked,
+10407,https://github.com/DSpace/DSpace/pull/10407,3984,https://github.com/DSpace/DSpace/issues/3984,1428,Not Checked,
+9722,https://github.com/DSpace/DSpace/pull/9722,8662,https://github.com/DSpace/DSpace/issues/8662,213,Not Checked,
+9723,https://github.com/DSpace/DSpace/pull/9723,8662,https://github.com/DSpace/DSpace/issues/8662,211,Not Checked,
+9718,https://github.com/DSpace/DSpace/pull/9718,8662,https://github.com/DSpace/DSpace/issues/8662,211,Not Checked,

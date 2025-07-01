@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+18,https://github.com/swark-io/swark/pull/18,7,https://github.com/swark-io/swark/issues/7,202,Good PR,"The issue clearly describes a specific problem related to the generation of Mermaid code by the LLM, providing actionable details about the error and current mitigations. It does not ask for a revert, nor is it vague, and focuses on a single issue of generating a cycle in the code. Additionally, it is primarily written in English."

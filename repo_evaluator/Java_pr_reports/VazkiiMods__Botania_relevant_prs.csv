@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+4745,https://github.com/VazkiiMods/Botania/pull/4745,4741,https://github.com/VazkiiMods/Botania/issues/4741,34,Good PR,"The issue provides a clear and actionable bug reproduction scenario with detailed steps and context, and it's not a revert or vague question. This makes it suitable as a good PR issue."

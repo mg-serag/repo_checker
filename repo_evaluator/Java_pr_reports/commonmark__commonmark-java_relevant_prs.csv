@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+381,https://github.com/commonmark/commonmark-java/pull/381,372,https://github.com/commonmark/commonmark-java/issues/372,129,Bad PR,"The issue lacks a clear, actionable description. With empty expected and actual behavior sections and no explicit explanation of the problem or what needs to be changed, it's not suitable for a 'Good PR'."

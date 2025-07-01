@@ -1,0 +1,5 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2753,https://github.com/openrocket/openrocket/pull/2753,2751,https://github.com/openrocket/openrocket/issues/2751,76,Good PR,"The issue provides clear evidence of a specific visual anomaly (the CP positions in the tail transition) through screenshots and an attached file, making it actionable for a developer. It also isn’t a revert, question, or vague request."
+2667,https://github.com/openrocket/openrocket/pull/2667,2639,https://github.com/openrocket/openrocket/issues/2639,149,Good PR,"The issue provides a clear and actionable bug report with specific details, reproduction steps, and context. It is not a revert or a vague request, making it suitable for a Good PR."
+2636,https://github.com/openrocket/openrocket/pull/2636,2590,https://github.com/openrocket/openrocket/issues/2590,53,Not Checked,
+2616,https://github.com/openrocket/openrocket/pull/2616,2608,https://github.com/openrocket/openrocket/issues/2608,466,Not Checked,

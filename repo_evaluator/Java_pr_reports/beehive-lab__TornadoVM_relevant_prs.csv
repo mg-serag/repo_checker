@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+635,https://github.com/beehive-lab/TornadoVM/pull/635,634,https://github.com/beehive-lab/TornadoVM/issues/634,57,Good PR,"The issue clearly describes a specific problem with dynamic allocation in the method, provides reproducible examples and context, and isn't a revert or vague request. It meets all criteria for a 'Good PR'."

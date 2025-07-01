@@ -1,0 +1,12 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+3457,https://github.com/apache/amoro/pull/3457,3440,https://github.com/apache/amoro/issues/3440,203,Bad PR,"The issue lacks a detailed description and actionable context, making it unclear what exactly needs to be done."
+3461,https://github.com/apache/amoro/pull/3461,3460,https://github.com/apache/amoro/issues/3460,27,Good PR,"The issue describes a clear, actionable improvement (fixing typos in code/comments) without reverting changes or being a vague question. While it might lack some details, it meets the necessary criteria for a 'Good PR'."
+3447,https://github.com/apache/amoro/pull/3447,3413,https://github.com/apache/amoro/issues/3413,95,Good PR,"The issue provides detailed error logs that clearly indicate a specific problem (a duplicate key error in the test suite), making it actionable. It is not a revert or a vague question, which qualifies it as a Good PR."
+3426,https://github.com/apache/amoro/pull/3426,3424,https://github.com/apache/amoro/issues/3424,230,Not Checked,
+3437,https://github.com/apache/amoro/pull/3437,3438,https://github.com/apache/amoro/issues/3438,258,Not Checked,
+3423,https://github.com/apache/amoro/pull/3423,3418,https://github.com/apache/amoro/issues/3418,109,Not Checked,
+3409,https://github.com/apache/amoro/pull/3409,3329,https://github.com/apache/amoro/issues/3329,444,Not Checked,
+3394,https://github.com/apache/amoro/pull/3394,3393,https://github.com/apache/amoro/issues/3393,585,Not Checked,
+3341,https://github.com/apache/amoro/pull/3341,3340,https://github.com/apache/amoro/issues/3340,387,Not Checked,
+3314,https://github.com/apache/amoro/pull/3314,3317,https://github.com/apache/amoro/issues/3317,277,Not Checked,
+3318,https://github.com/apache/amoro/pull/3318,3316,https://github.com/apache/amoro/issues/3316,339,Not Checked,

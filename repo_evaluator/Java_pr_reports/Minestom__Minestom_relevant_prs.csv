@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2621,https://github.com/Minestom/Minestom/pull/2621,1616,https://github.com/Minestom/Minestom/issues/1616,85,Good PR,"The issue clearly identifies a specific, actionable problem (inconsistent naming between methods) and suggests a solution (standardize naming and deprecate obsolete methods). It meets the criteria for a 'Good PR'."

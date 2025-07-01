@@ -1,0 +1,17 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+11874,https://github.com/apache/inlong/pull/11874,11873,https://github.com/apache/inlong/issues/11873,172,Good PR,"The issue outlines a specific feature request (support parsing field values using $ctx as a prefix) which is actionable and not a revert, question, or vague help request."
+11820,https://github.com/apache/inlong/pull/11820,11819,https://github.com/apache/inlong/issues/11819,237,Good PR,"The issue provides specific, actionable examples comparing current and expected parsing behavior. It clearly outlines the problem and includes a commitment to submit a PR, making it suitable for a Good PR."
+11761,https://github.com/apache/inlong/pull/11761,11760,https://github.com/apache/inlong/issues/11760,57,Not Checked,
+11753,https://github.com/apache/inlong/pull/11753,11752,https://github.com/apache/inlong/issues/11752,87,Not Checked,
+11755,https://github.com/apache/inlong/pull/11755,11754,https://github.com/apache/inlong/issues/11754,512,Not Checked,
+11728,https://github.com/apache/inlong/pull/11728,11727,https://github.com/apache/inlong/issues/11727,63,Not Checked,
+11693,https://github.com/apache/inlong/pull/11693,11692,https://github.com/apache/inlong/issues/11692,117,Not Checked,
+11679,https://github.com/apache/inlong/pull/11679,11678,https://github.com/apache/inlong/issues/11678,2514,Not Checked,
+11351,https://github.com/apache/inlong/pull/11351,11349,https://github.com/apache/inlong/issues/11349,195,Not Checked,
+11625,https://github.com/apache/inlong/pull/11625,11624,https://github.com/apache/inlong/issues/11624,1913,Not Checked,
+11613,https://github.com/apache/inlong/pull/11613,11611,https://github.com/apache/inlong/issues/11611,290,Not Checked,
+11592,https://github.com/apache/inlong/pull/11592,11591,https://github.com/apache/inlong/issues/11591,742,Not Checked,
+11575,https://github.com/apache/inlong/pull/11575,11574,https://github.com/apache/inlong/issues/11574,22,Not Checked,
+11566,https://github.com/apache/inlong/pull/11566,11565,https://github.com/apache/inlong/issues/11565,178,Not Checked,
+11517,https://github.com/apache/inlong/pull/11517,11516,https://github.com/apache/inlong/issues/11516,68,Not Checked,
+11507,https://github.com/apache/inlong/pull/11507,11506,https://github.com/apache/inlong/issues/11506,695,Not Checked,

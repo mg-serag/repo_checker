@@ -1,0 +1,18 @@
+PROCESSING SUMMARY REPORT
+Generated: 2025-06-30 12:34:40
+Total Repositories Processed: 6
+Successful: 6
+Failed: 0
+
+TOTALS ACROSS ALL REPOSITORIES
+Initial PRs,After Date Filter,After Good PRs Filter,After LT Dedup,After Local Dedup,Final PRs
+731,381,27,27,27,27
+
+DETAILED REPOSITORY STATISTICS
+Repository,Language,Initial PRs,After Date Filter,After Good PRs Filter,After LT Dedup,After Local Dedup,Final PRs,Status,Error
+apache/druid,Java,35,16,6,6,6,6,Success,
+apache/pulsar,Java,94,54,4,4,4,4,Success,
+apache/rocketmq,Java,266,50,7,7,7,7,Success,
+grpc/grpc-java,Java,85,28,1,1,1,1,Success,
+prestodb/presto,Java,89,72,2,2,2,2,Success,
+quarkusio/quarkus,Java,162,161,7,7,7,7,Success,

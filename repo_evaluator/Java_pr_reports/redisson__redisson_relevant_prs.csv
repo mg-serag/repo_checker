@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+6300,https://github.com/redisson/redisson/pull/6300,6294,https://github.com/redisson/redisson/issues/6294,102,Good PR,"The issue clearly describes an actionable bug with detailed context, code examples, and expected versus actual behavior. It is specific and not a revert or vague question."

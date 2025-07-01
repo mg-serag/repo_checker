@@ -1,0 +1,5 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+516,https://github.com/apache/polaris/pull/516,515,https://github.com/apache/polaris/issues/515,414,Good PR,"The issue provides a clear, actionable feature request focused on improving maintainability and decoupling logic. It is not a revert or a vague query, making it suitable for a Good PR."
+940,https://github.com/apache/polaris/pull/940,878,https://github.com/apache/polaris/issues/878,514,Good PR,"The issue clearly describes an actionable feature enhancement to improve handling of bootstrap credentials using Kubernetes secrets. It is specific, not a revert, and not a vague question or documentation request."
+455,https://github.com/apache/polaris/pull/455,342,https://github.com/apache/polaris/issues/342,31,Not Checked,
+312,https://github.com/apache/polaris/pull/312,289,https://github.com/apache/polaris/issues/289,376,Not Checked,

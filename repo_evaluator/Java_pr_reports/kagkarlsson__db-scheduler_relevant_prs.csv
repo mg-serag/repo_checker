@@ -1,0 +1,3 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+659,https://github.com/kagkarlsson/db-scheduler/pull/659,658,https://github.com/kagkarlsson/db-scheduler/issues/658,34,Good PR,"The issue clearly describes a specific problem with actionable reproduction steps, expected behavior, and current workaround. It does not request a revert or ask a vague question."
+596,https://github.com/kagkarlsson/db-scheduler/pull/596,595,https://github.com/kagkarlsson/db-scheduler/issues/595,439,Good PR,"The issue clearly describes a specific performance enhancement with a concrete example and expected behavior, making it actionable. It is not a revert or a vague request, so it meets all the criteria for a Good PR."

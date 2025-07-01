@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+3786,https://github.com/projectlombok/lombok/pull/3786,3783,https://github.com/projectlombok/lombok/issues/3783,86,Good PR,"The issue clearly specifies a bug with actionable details, including reproduction steps and supporting evidence. It is not just a revert or a vague question, making it a suitable candidate for a good PR."

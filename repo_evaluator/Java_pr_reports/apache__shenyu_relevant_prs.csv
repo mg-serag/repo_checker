@@ -1,0 +1,3 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+5953,https://github.com/apache/shenyu/pull/5953,5923,https://github.com/apache/shenyu/issues/5923,451,Bad PR,"The issue is a roadmap or volunteer invitation listing multiple features/tasks rather than a single, clear, and actionable problem. It doesn't provide the focused, self-contained context that defines a 'Good PR'."
+5918,https://github.com/apache/shenyu/pull/5918,5641,https://github.com/apache/shenyu/issues/5641,22,Good PR,"The issue clearly suggests renaming a parameter to align with Kafka terminology, providing a specific and actionable change. It is neither a revert, a question, nor a vague request."

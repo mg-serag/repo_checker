@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+6049,https://github.com/spring-attic/spring-cloud-dataflow/pull/6049,6048,https://github.com/spring-attic/spring-cloud-dataflow/issues/6048,77,Good PR,"The issue clearly specifies the need to update String methods to use Locale.ROOT, making it specific and actionable. It is not a revert nor a vague question or documentation request."

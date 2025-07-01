@@ -1,0 +1,26 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+8724,https://github.com/hyperledger/besu/pull/8724,8608,https://github.com/hyperledger/besu/issues/8608,58,Bad PR,"The issue simply references an EIP without providing clear, actionable details. It lacks the contextual explanation necessary for a developer to start working on it, making it too vague for a 'Good PR'."
+8761,https://github.com/hyperledger/besu/pull/8761,8760,https://github.com/hyperledger/besu/issues/8760,137,Bad PR,Issue body is too short.
+8631,https://github.com/hyperledger/besu/pull/8631,8331,https://github.com/hyperledger/besu/issues/8331,1583,Good PR,"The issue provides a clear and actionable description of the required changes, includes necessary context and reference documents, and is not a revert or vague question."
+8671,https://github.com/hyperledger/besu/pull/8671,8600,https://github.com/hyperledger/besu/issues/8600,256,Bad PR,Issue body is too short.
+8621,https://github.com/hyperledger/besu/pull/8621,8601,https://github.com/hyperledger/besu/issues/8601,111,Good PR,"The issue clearly states that EOF has been removed from Fusaka hardfork and instructs to remove it from the Osaka milestone, making it a specific, actionable task rather than a revert or vague request."
+8490,https://github.com/hyperledger/besu/pull/8490,6869,https://github.com/hyperledger/besu/issues/6869,79,Not Checked,
+8207,https://github.com/hyperledger/besu/pull/8207,8204,https://github.com/hyperledger/besu/issues/8204,98,Not Checked,
+8408,https://github.com/hyperledger/besu/pull/8408,8392,https://github.com/hyperledger/besu/issues/8392,870,Not Checked,
+7930,https://github.com/hyperledger/besu/pull/7930,7924,https://github.com/hyperledger/besu/issues/7924,51,Not Checked,
+8249,https://github.com/hyperledger/besu/pull/8249,8245,https://github.com/hyperledger/besu/issues/8245,80,Not Checked,
+8289,https://github.com/hyperledger/besu/pull/8289,7533,https://github.com/hyperledger/besu/issues/7533,383,Not Checked,
+8166,https://github.com/hyperledger/besu/pull/8166,5788,https://github.com/hyperledger/besu/issues/5788,67,Not Checked,
+7838,https://github.com/hyperledger/besu/pull/7838,1822,https://github.com/hyperledger/besu/issues/1822,355,Not Checked,
+8059,https://github.com/hyperledger/besu/pull/8059,8055,https://github.com/hyperledger/besu/issues/8055,24,Not Checked,
+8148,https://github.com/hyperledger/besu/pull/8148,8147,https://github.com/hyperledger/besu/issues/8147,389,Not Checked,
+8128,https://github.com/hyperledger/besu/pull/8128,8119,https://github.com/hyperledger/besu/issues/8119,99,Not Checked,
+8115,https://github.com/hyperledger/besu/pull/8115,8031,https://github.com/hyperledger/besu/issues/8031,345,Not Checked,
+7978,https://github.com/hyperledger/besu/pull/7978,7932,https://github.com/hyperledger/besu/issues/7932,125,Not Checked,
+8093,https://github.com/hyperledger/besu/pull/8093,7994,https://github.com/hyperledger/besu/issues/7994,282,Not Checked,
+8036,https://github.com/hyperledger/besu/pull/8036,7947,https://github.com/hyperledger/besu/issues/7947,57,Not Checked,
+7997,https://github.com/hyperledger/besu/pull/7997,7994,https://github.com/hyperledger/besu/issues/7994,305,Not Checked,
+7823,https://github.com/hyperledger/besu/pull/7823,7605,https://github.com/hyperledger/besu/issues/7605,106,Not Checked,
+7801,https://github.com/hyperledger/besu/pull/7801,5788,https://github.com/hyperledger/besu/issues/5788,267,Not Checked,
+7922,https://github.com/hyperledger/besu/pull/7922,7810,https://github.com/hyperledger/besu/issues/7810,55,Not Checked,
+7890,https://github.com/hyperledger/besu/pull/7890,5788,https://github.com/hyperledger/besu/issues/5788,40,Not Checked,

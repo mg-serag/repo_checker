@@ -1,0 +1,3 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+80,https://github.com/ryoppippi/ccusage/pull/80,23,https://github.com/ryoppippi/ccusage/issues/23,774,Bad PR,"The issue is vague and lacks specificity about what needs to be implemented for tracking the sessions. It does not provide enough context or actionable details, which makes it unsuitable for a 'Good PR'."
+52,https://github.com/ryoppippi/ccusage/pull/52,14,https://github.com/ryoppippi/ccusage/issues/14,365,Bad PR,The issue is vague and framed as a question about feasibility rather than a clear and actionable problem or feature request. It's not well-defined enough for a developer to start working on it without further clarification.

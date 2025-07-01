@@ -1,0 +1,4 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1284,https://github.com/jline/jline3/pull/1284,1282,https://github.com/jline/jline3/issues/1282,1433,Good PR,"The issue clearly describes the problem and the desired changes: exposing separate API endpoints for configuring stdout, stderr, and stdin encodings, along with providing defaults from system properties. It is actionable, not a revert, and not a vague request, thus meeting the criteria for a Good PR."
+1208,https://github.com/jline/jline3/pull/1208,1134,https://github.com/jline/jline3/issues/1134,300,Good PR,"The issue clearly describes a missing feature (retrieving default terminal colors), provides context with a reference, and is actionable. It is not a revert, nor is it a vague question or request."
+1195,https://github.com/jline/jline3/pull/1195,1194,https://github.com/jline/jline3/issues/1194,1524,Not Checked,

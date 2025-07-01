@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+426,https://github.com/hamcrest/JavaHamcrest/pull/426,392,https://github.com/hamcrest/JavaHamcrest/issues/392,176,Good PR,"The issue provides clear details on the bug with reproducible context and specific pointers to the problematic code. It is actionable, not a revert nor just a vague query, making it suitable for a Good PR."

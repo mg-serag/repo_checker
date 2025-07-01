@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1463,https://github.com/HoudiniGraphql/houdini/pull/1463,1462,https://github.com/HoudiniGraphql/houdini/issues/1462,66,Good PR,"The issue describes a specific bug related to the Houdini plugin and provides a clear, actionable problem with enough context for a developer to start working on a solution. It includes a reproduction link and clearly outlines the conditions under which the bug occurs, meeting all the criteria for a 'Good PR'."

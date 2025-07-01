@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2839,https://github.com/discord-jda/JDA/pull/2839,2838,https://github.com/discord-jda/JDA/issues/2838,150,Good PR,"The issue clearly describes a specific, actionable bug with a reproducible code snippet, and it is not a revert or a vague question."

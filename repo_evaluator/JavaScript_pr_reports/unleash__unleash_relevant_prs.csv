@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+9783,https://github.com/unleash/unleash/pull/9783,9775,https://github.com/unleash/unleash/issues/9775,49,Good PR,"The issue clearly describes a specific problem regarding deprecated environment variables in the `docker-compose.yml`, provides steps to reproduce it, and suggests a concrete fix. It is actionable, focused on a single issue, and primarily in English, meeting all the criteria for a 'Good PR'."

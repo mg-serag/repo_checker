@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+589,https://github.com/web-infra-dev/rsdoctor/pull/589,566,https://github.com/web-infra-dev/rsdoctor/issues/566,397,Good PR,"The issue clearly describes a specific problem related to the loader analysis page and provides context regarding Rspack layers, making it actionable for a developer. It is not a request to revert changes, nor is it vague or a question. Additionally, it focuses on a single, well-defined feature improvement. The content is primarily in English."

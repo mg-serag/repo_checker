@@ -1,0 +1,12 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+14565,https://github.com/webdriverio/webdriverio/pull/14565,14532,https://github.com/webdriverio/webdriverio/issues/14532,30,Good PR,"The issue clearly explains the bug, provides reproduction steps, and identifies a specific problem with custom reporter paths on Windows, making it actionable and not a revert, question, or vague request."
+14465,https://github.com/webdriverio/webdriverio/pull/14465,6486,https://github.com/webdriverio/webdriverio/issues/6486,86,Good PR,"The issue clearly describes a specific bug with detailed reproduction steps, expected behavior, and error logs. It meets the criteria as it is actionable, not a revert, and not a vague question or request."
+14287,https://github.com/webdriverio/webdriverio/pull/14287,14258,https://github.com/webdriverio/webdriverio/issues/14258,90,Not Checked,
+14246,https://github.com/webdriverio/webdriverio/pull/14246,14240,https://github.com/webdriverio/webdriverio/issues/14240,226,Not Checked,
+14229,https://github.com/webdriverio/webdriverio/pull/14229,14227,https://github.com/webdriverio/webdriverio/issues/14227,20,Not Checked,
+14212,https://github.com/webdriverio/webdriverio/pull/14212,6538,https://github.com/webdriverio/webdriverio/issues/6538,56,Not Checked,
+14184,https://github.com/webdriverio/webdriverio/pull/14184,14082,https://github.com/webdriverio/webdriverio/issues/14082,26,Not Checked,
+14085,https://github.com/webdriverio/webdriverio/pull/14085,14083,https://github.com/webdriverio/webdriverio/issues/14083,39,Not Checked,
+13906,https://github.com/webdriverio/webdriverio/pull/13906,14046,https://github.com/webdriverio/webdriverio/issues/14046,401,Not Checked,
+13896,https://github.com/webdriverio/webdriverio/pull/13896,13893,https://github.com/webdriverio/webdriverio/issues/13893,44,Not Checked,
+13878,https://github.com/webdriverio/webdriverio/pull/13878,13875,https://github.com/webdriverio/webdriverio/issues/13875,52,Not Checked,

@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1526,https://github.com/immutables/immutables/pull/1526,1457,https://github.com/immutables/immutables/issues/1457,108,Good PR,"The issue provides a clear, reproducible scenario including code snippets and error logs, and it does not request a simple revert or ask a vague question. It clearly describes a bug that is actionable for a developer."

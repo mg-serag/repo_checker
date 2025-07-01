@@ -1,0 +1,14 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2405,https://github.com/ClickHouse/clickhouse-java/pull/2405,2404,https://github.com/ClickHouse/clickhouse-java/issues/2404,23,Good PR,"The issue clearly describes a specific problem with the code's API compatibility with JDK versions, providing a clear actionable objective. It is not a revert, vague request, or merely a question."
+2369,https://github.com/ClickHouse/clickhouse-java/pull/2369,2342,https://github.com/ClickHouse/clickhouse-java/issues/2342,91,Good PR,"The issue clearly describes a specific problem with IPV6 data handling, provides context, and is actionable without being a revert, question, or vague request."
+2356,https://github.com/ClickHouse/clickhouse-java/pull/2356,2355,https://github.com/ClickHouse/clickhouse-java/issues/2355,46,Not Checked,
+2316,https://github.com/ClickHouse/clickhouse-java/pull/2316,2171,https://github.com/ClickHouse/clickhouse-java/issues/2171,1315,Not Checked,
+2334,https://github.com/ClickHouse/clickhouse-java/pull/2334,2333,https://github.com/ClickHouse/clickhouse-java/issues/2333,37,Not Checked,
+2320,https://github.com/ClickHouse/clickhouse-java/pull/2320,2118,https://github.com/ClickHouse/clickhouse-java/issues/2118,36,Not Checked,
+2311,https://github.com/ClickHouse/clickhouse-java/pull/2311,2292,https://github.com/ClickHouse/clickhouse-java/issues/2292,656,Not Checked,
+2302,https://github.com/ClickHouse/clickhouse-java/pull/2302,2290,https://github.com/ClickHouse/clickhouse-java/issues/2290,141,Not Checked,
+2281,https://github.com/ClickHouse/clickhouse-java/pull/2281,2282,https://github.com/ClickHouse/clickhouse-java/issues/2282,284,Not Checked,
+2267,https://github.com/ClickHouse/clickhouse-java/pull/2267,2274,https://github.com/ClickHouse/clickhouse-java/issues/2274,63,Not Checked,
+2130,https://github.com/ClickHouse/clickhouse-java/pull/2130,1925,https://github.com/ClickHouse/clickhouse-java/issues/1925,1103,Not Checked,
+2116,https://github.com/ClickHouse/clickhouse-java/pull/2116,2117,https://github.com/ClickHouse/clickhouse-java/issues/2117,149,Not Checked,
+2105,https://github.com/ClickHouse/clickhouse-java/pull/2105,378,https://github.com/ClickHouse/clickhouse-java/issues/378,39,Not Checked,

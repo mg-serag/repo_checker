@@ -1,0 +1,5 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+17445,https://github.com/jupyterlab/jupyterlab/pull/17445,1644,https://github.com/jupyterlab/jupyterlab/issues/1644,354,Good PR,"The issue clearly describes a specific, actionable feature request (multi-cell selection with SHIFT for copy-pasting) without being a revert, vague, or a question."
+17337,https://github.com/jupyterlab/jupyterlab/pull/17337,16277,https://github.com/jupyterlab/jupyterlab/issues/16277,225,Good PR,"The issue provides a clear, actionable problem with reproduction steps, expected behavior, and context. It is neither a revert request nor a vague question, making it suitable for a good PR."
+17082,https://github.com/jupyterlab/jupyterlab/pull/17082,17011,https://github.com/jupyterlab/jupyterlab/issues/17011,59,Not Checked,
+17067,https://github.com/jupyterlab/jupyterlab/pull/17067,17060,https://github.com/jupyterlab/jupyterlab/issues/17060,56,Not Checked,

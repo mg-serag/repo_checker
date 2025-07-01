@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1509,https://github.com/eclipse-vertx/vertx-sql-client/pull/1509,1473,https://github.com/eclipse-vertx/vertx-sql-client/issues/1473,25,Good PR,The issue clearly describes a reproducible problem with a detailed stack trace and a precise suggestion (using row.getBigDecimal instead of row.get for BigDecimal). It is actionable and does not request a revert or provide a vague question.

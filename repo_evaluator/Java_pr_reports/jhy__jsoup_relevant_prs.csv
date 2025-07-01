@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2305,https://github.com/jhy/jsoup/pull/2305,1984,https://github.com/jhy/jsoup/issues/1984,91,Good PR,"The issue clearly describes a specific problem with how cssSelector handles combining characters, includes a reproducible test case, and is not a revert or a vague query."

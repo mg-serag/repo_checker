@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2711,https://github.com/winder/Universal-G-Code-Sender/pull/2711,2710,https://github.com/winder/Universal-G-Code-Sender/issues/2710,109,Good PR,"The issue clearly describes a specific, actionable problem with detailed reproduction steps, system details, and context. It is not a request for a revert or vague help, making it suitable for a Good PR."

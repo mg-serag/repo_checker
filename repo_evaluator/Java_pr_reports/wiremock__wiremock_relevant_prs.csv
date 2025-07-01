@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+3009,https://github.com/wiremock/wiremock/pull/3009,2998,https://github.com/wiremock/wiremock/issues/2998,46,Good PR,"The issue clearly describes a performance problem with webhook callbacks, provides actionable reproduction steps, and includes references to specific code. It is not a revert nor a vague question, making it a good candidate for a PR."

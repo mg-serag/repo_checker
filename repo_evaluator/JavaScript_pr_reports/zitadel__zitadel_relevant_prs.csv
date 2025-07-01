@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+9591,https://github.com/zitadel/zitadel/pull/9591,7248,https://github.com/zitadel/zitadel/issues/7248,1016,Good PR,The issue is clear and actionable with detailed acceptance criteria. It outlines exact requirements for the feature and does not ask for a revert or pose a vague question.

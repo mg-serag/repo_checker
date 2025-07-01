@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+4095,https://github.com/redis/jedis/pull/4095,4108,https://github.com/redis/jedis/issues/4108,893,Good PR,"The issue provides clear, actionable feature requests (HGETDEL, HGETEX, and HSETEX) with links to existing implementations and related server-side details, making it suitable for a Good PR."

@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1114,https://github.com/locationtech/jts/pull/1114,758,https://github.com/locationtech/jts/issues/758,569,Bad PR,"The issue is phrased as a question asking about the difficulty of porting functionality rather than providing a clear, actionable problem definition. It doesn’t specify a precise feature request or necessary changes, making it unsuitable for a 'Good PR'."

@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+4070,https://github.com/AnySoftKeyboard/AnySoftKeyboard/pull/4070,4061,https://github.com/AnySoftKeyboard/AnySoftKeyboard/issues/4061,125,Bad PR,"This issue is essentially a massive crash report without clear reproduction steps or a specific, actionable description of the problem. It doesn't provide enough context for a developer to create a targeted fix."

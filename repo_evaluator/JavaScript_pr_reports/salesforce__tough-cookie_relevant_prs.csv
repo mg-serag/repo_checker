@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+498,https://github.com/salesforce/tough-cookie/pull/498,382,https://github.com/salesforce/tough-cookie/issues/382,160,Bad PR,"The issue discusses reconsidering a previous decision regarding a closed pull request, which does not align with the criteria as it essentially requests to revert to a previous state rather than proposing a new feature or clearly defining a specific, actionable problem."

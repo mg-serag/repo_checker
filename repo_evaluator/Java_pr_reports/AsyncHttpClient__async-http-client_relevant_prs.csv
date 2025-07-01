@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2090,https://github.com/AsyncHttpClient/async-http-client/pull/2090,1884,https://github.com/AsyncHttpClient/async-http-client/issues/1884,32,Good PR,"The issue clearly describes a specific problem, provides detailed context including code references, and suggests a potential solution. It is not simply a question, a vague help request, or a revert request, which makes it actionable for a developer."

@@ -1,0 +1,3 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2074,https://github.com/GIScience/openrouteservice/pull/2074,2064,https://github.com/GIScience/openrouteservice/issues/2064,59,Good PR,"The issue clearly describes the problem with actionable context and a proposed solution, without being a revert or a vague question."
+2014,https://github.com/GIScience/openrouteservice/pull/2014,2004,https://github.com/GIScience/openrouteservice/issues/2004,26,Good PR,"The issue clearly outlines the expected and current behaviors, providing enough technical details for developers to take actionable steps. It is not a revert, question, or vague request."

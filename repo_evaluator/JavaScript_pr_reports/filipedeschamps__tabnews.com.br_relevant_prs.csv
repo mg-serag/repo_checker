@@ -1,0 +1,3 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1906,https://github.com/filipedeschamps/tabnews.com.br/pull/1906,1089,https://github.com/filipedeschamps/tabnews.com.br/issues/1089,56,Good PR,"The issue clearly describes a specific bug where UI elements remain visible after deletion, and it's actionable without being a revert or vague question."
+1790,https://github.com/filipedeschamps/tabnews.com.br/pull/1790,957,https://github.com/filipedeschamps/tabnews.com.br/issues/957,106,Bad PR,"The issue resembles a user support request related to account recovery rather than a clear, actionable bug fix or feature addition that a developer can work on. It doesn't specify a development task and is more of a user problem."

@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2691,https://github.com/castorini/anserini/pull/2691,2688,https://github.com/castorini/anserini/issues/2688,1490,Good PR,"The issue clearly identifies the problem, provides examples, and specifies what needs to be fixed without being a revert or a vague question. It meets the criteria for a 'Good PR'."

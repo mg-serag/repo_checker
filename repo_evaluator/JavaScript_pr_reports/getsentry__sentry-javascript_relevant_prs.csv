@@ -1,0 +1,13 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+16681,https://github.com/getsentry/sentry-javascript/pull/16681,16559,https://github.com/getsentry/sentry-javascript/issues/16559,111,Bad PR,Issue body is too short.
+16492,https://github.com/getsentry/sentry-javascript/pull/16492,16310,https://github.com/getsentry/sentry-javascript/issues/16310,582,Good PR,"The issue clearly describes a specific technical problem (LCP metrics issue) and proposes an actionable solution (upgrading to web-vitals v5). It is not a revert request nor a vague query, making it a good candidate for a PR."
+16443,https://github.com/getsentry/sentry-javascript/pull/16443,16441,https://github.com/getsentry/sentry-javascript/issues/16441,84,Good PR,"The issue clearly defines a specific problem with actionable context and a proposed direction (exposing an option to ignore certain spans). It is neither a revert request nor a vague question, making it suitable for a Good PR."
+16037,https://github.com/getsentry/sentry-javascript/pull/16037,15754,https://github.com/getsentry/sentry-javascript/issues/15754,191,Not Checked,
+15380,https://github.com/getsentry/sentry-javascript/pull/15380,13674,https://github.com/getsentry/sentry-javascript/issues/13674,446,Not Checked,
+15569,https://github.com/getsentry/sentry-javascript/pull/15569,15754,https://github.com/getsentry/sentry-javascript/issues/15754,223,Not Checked,
+15434,https://github.com/getsentry/sentry-javascript/pull/15434,15431,https://github.com/getsentry/sentry-javascript/issues/15431,103,Not Checked,
+15459,https://github.com/getsentry/sentry-javascript/pull/15459,15458,https://github.com/getsentry/sentry-javascript/issues/15458,30,Not Checked,
+15262,https://github.com/getsentry/sentry-javascript/pull/15262,15259,https://github.com/getsentry/sentry-javascript/issues/15259,51,Not Checked,
+15161,https://github.com/getsentry/sentry-javascript/pull/15161,12395,https://github.com/getsentry/sentry-javascript/issues/12395,77,Not Checked,
+14820,https://github.com/getsentry/sentry-javascript/pull/14820,14383,https://github.com/getsentry/sentry-javascript/issues/14383,62,Not Checked,
+14734,https://github.com/getsentry/sentry-javascript/pull/14734,14669,https://github.com/getsentry/sentry-javascript/issues/14669,30,Not Checked,

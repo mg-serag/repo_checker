@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+526,https://github.com/ezylang/EvalEx/pull/526,524,https://github.com/ezylang/EvalEx/issues/524,61,Bad PR,"The issue asks a question about potential inputs that may trigger the error, which makes it more of a request for information rather than a clear, actionable problem statement. It lacks a specific fix or feature request, which is needed for a 'Good PR'."

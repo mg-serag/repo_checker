@@ -6,6 +6,7 @@ import re
 import csv
 from datetime import datetime
 from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from dotenv import load_dotenv
@@ -16,36 +17,31 @@ import pandas as pd
 from termcolor import colored
 
 # --- Configuration ---
-load_dotenv()
+# load_dotenv()
 
-# Load token from env or config
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-if not GITHUB_TOKEN:
-    CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
-    if os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH, "r", encoding="utf-8") as cfg:
-            data = json.load(cfg)
-        token_str = data.get("GITHUB_TOKENS", "").strip()
-        # Use the first token in the list if present
-        if token_str:
-            GITHUB_TOKEN = token_str.split()[0]
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-CREDS_JSON_PATH = os.path.join(os.path.dirname(__file__), 'creds.json')
-SCOPE = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+# --- Language Configuration ---
+TARGET_LANGUAGE = "JavaScript"  # Set target language directly
 
 # --- Script Behavior ---
 DEBUG_MODE = False
 DEBUG_REPO_URL = "https://github.com/keras-team/keras"
 TARGET_GOOD_PRS = 2
-LLM_MODEL = "o3-mini"
+LLM_MODEL = "gpt-4o-mini"  # Changed to GPT-4o mini
 MERGED_AFTER_DATE = datetime.fromisoformat('2024-11-01T00:00:00+00:00')
+
+# --- Parallel Processing Configuration ---
+ENABLE_PARALLEL_PROCESSING = True
+MAX_WORKERS = 4  # Number of parallel workers for agentic checks
+PR_PROCESSING_THRESHOLD = 1.0  # Default 100% - process all PRs that passed logical checks
+
+# --- Single Repo Mode Configuration ---
+SINGLE_REPO_MODE = False  # Set to True to run on a specific repo instead of Google Sheets
+SINGLE_REPO_URL = "https://github.com/example/example-repo"  # Replace with your target repo
+SINGLE_REPO_OUTPUT_DIR = "repo_evaluator/pr_reports"  # Output directory for single repo mode
 
 # --- Spreadsheet Configuration ---
 # Key for the sheet to be processed
 SPREADSHEET_KEY = "1XMbstebCi1xFSwJ7cTN-DXv4jFmdH2owWBE3R7YsXK0"
-
-# --- Language Configuration ---
-TARGET_LANGUAGE = "Java"  # Set target language directly
 
 # Language-specific configurations for agentic PR checks
 LANGUAGE_CONFIG = {
@@ -99,6 +95,27 @@ LANGUAGE_CONFIG = {
     }
 }
 
+# Load token from env or config
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+if not GITHUB_TOKEN:
+    CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as cfg:
+                data = json.load(cfg)
+            token_str = data.get("GITHUB_TOKENS", "").strip()
+            # Use the first token in the list if present
+            if token_str:
+                GITHUB_TOKEN = token_str.split()[0]
+        except (UnicodeDecodeError, json.JSONDecodeError, IOError) as e:
+            print(f"⚠️ Warning: Could not read config.json file: {e}")
+            print("   Please ensure the file is UTF-8 encoded and contains valid JSON.")
+            GITHUB_TOKEN = None
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+CREDS_JSON_PATH = os.path.join(os.path.dirname(__file__), 'creds.json')
+SCOPE = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+
 # Get current language configuration
 LANG_CONFIG = LANGUAGE_CONFIG.get(TARGET_LANGUAGE, LANGUAGE_CONFIG['JavaScript'])
 SHEET_NAME = LANG_CONFIG['sheet_name']
@@ -121,6 +138,24 @@ UNIVERSAL_TEST_EXT = {'.snap', '.spec'}
 ALL_SOURCE_EXT = set()
 for _lang_cfg in LANGUAGE_CONFIG.values():
     ALL_SOURCE_EXT.update(_lang_cfg["source_ext"])
+
+
+def is_english(text):
+    """
+    A more lenient heuristic to check if a string is likely in English.
+    Returns True if over 90% of characters are ASCII.
+    """
+    if not text or not text.strip():
+        return True  # Assume empty descriptions are fine
+    
+    total_chars = len(text)
+    ascii_chars = sum(1 for char in text if ord(char) < 128)
+    
+    # If the proportion of ASCII characters is high, assume it's English
+    if (ascii_chars / total_chars) >= 0.9:
+        return True
+        
+    return False
 
 
 def _get_language_config(lang_name: str):
@@ -178,14 +213,48 @@ def print_language_configuration():
     print(f"Target Language: {TARGET_LANGUAGE}")
     print(f"Sheet Name: {SHEET_NAME}")
     print(f"Spreadsheet Key: {SPREADSHEET_KEY}")
+    print(f"Output Directory: {get_language_output_dir()}")
     print("-" * 80)
     print(f"Source Extensions: {', '.join(sorted(LANG_CONFIG['source_ext']))}")
     print(f"Dependency Files: {', '.join(sorted(LANG_CONFIG['dependency_files']))}")
     print("-" * 80)
     print(f"Universal Test Extensions: {', '.join(sorted(UNIVERSAL_TEST_EXT))}")
     print(f"Non-Code Extensions: {', '.join(sorted(NON_CODE_EXT))}")
+    print("-" * 80)
+    print("PROCESSING CONFIGURATION")
+    print("-" * 80)
+    print(f"LLM Model: {LLM_MODEL}")
+    print(f"Target Good PRs: {TARGET_GOOD_PRS}")
+    print(f"Parallel Processing: {'Enabled' if ENABLE_PARALLEL_PROCESSING else 'Disabled'}")
+    print(f"Max Workers: {MAX_WORKERS}")
+    print(f"PR Processing Threshold: {PR_PROCESSING_THRESHOLD:.1%}")
     print("=" * 80)
     print()
+
+def get_language_output_dir():
+    """
+    Returns the language-specific output directory for PR reports.
+    Creates the directory if it doesn't exist.
+    """
+    # Map language names to folder names
+    language_folder_map = {
+        'Java': 'Java_pr_reports',
+        'JavaScript': 'JavaScript_pr_reports', 
+        'TypeScript': 'TypeScript_pr_reports',
+        'Python': 'Python_pr_reports',
+        'Go': 'Go_pr_reports'
+    }
+    
+    # Get the folder name for current language, default to 'Unknown_pr_reports'
+    folder_name = language_folder_map.get(TARGET_LANGUAGE, f'{TARGET_LANGUAGE}_pr_reports')
+    
+    # Create the full path
+    output_dir = os.path.join("repo_evaluator", folder_name)
+    
+    # Create directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    return output_dir
 
 # --- Agent Prompt ---
 AGENT_PROMPT = """
@@ -195,6 +264,8 @@ A "Good PR" is linked to an issue that meets these criteria:
 1.  **Clear and Actionable**: It describes a specific, actionable problem or feature, providing enough context for a developer to start working.
 2.  **Not a Revert**: The issue must not be a request to simply revert previous changes or roll back to an older version.
 3.  **Not a Question or Vague Request**: It must not be a simple user question, a vague request for help, or a request for documentation.
+4.  **Single Issue Focus**: The issue should be focused on closing a single, well-defined problem or feature request.
+5.  **Primarily in English**: At least 90 percent of the issue content should be written in English.
 
 Analyze the following issue body and determine if it represents a "Good PR" or a "Bad PR" based on these criteria.
 
@@ -446,86 +517,268 @@ def find_logically_relevant_prs(owner, repo):
         if not issue_number:
             if DEBUG_MODE: print(f"  - Skip: No unique issue found.")
             continue
-            
-        # FIX: Construct the files_url manually instead of relying on a non-existent key.
+        
+        # Get issue details for language filtering
+        issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}"
+        issue_data = make_github_api_request(issue_url)
+        if not issue_data:
+            if DEBUG_MODE: print(f"  - Skip: Could not fetch issue #{issue_number}")
+            continue
+        
+        issue_json = issue_data.json()
+        
+        # Check if the linked item is actually an issue, not a PR
+        if issue_json.get('pull_request'):
+            if DEBUG_MODE: print(f"  - Skip: Linked item #{issue_number} is a Pull Request, not an Issue.")
+            continue
+        
+        # Language filtering: Issue statement must be in English (90% ASCII)
+        issue_body = issue_json.get('body', '')
+        if not is_english(issue_body):
+            if DEBUG_MODE: print(f"  - Skip: Issue #{issue_number} statement contains too many non-English characters.")
+            continue
+        
+        # Get PR files to analyze code changes in non-test files
         files_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/files"
         files = get_pr_files(files_url)
+        if not files:
+            if DEBUG_MODE: print(f"  - Skip: No files found in PR #{pr_number}")
+            continue
+        
+        # Count additions/deletions only in non-test code files
+        lang_cfg = _get_language_config(LANGUAGE)
+        allowed_ext = lang_cfg["source_ext"]
+        dependency_files = lang_cfg["dependency_files"]
+        
+        non_test_code_changes = 0
+        for file_info in files:
+            filename = file_info.get('filename', '')
+            ext = os.path.splitext(filename)[1].lower()
+            
+            # Skip non-code files and dependency files
+            if ext not in allowed_ext or os.path.basename(filename) in dependency_files:
+                continue
+            
+            # Skip test files
+            if _is_test_file(filename, LANGUAGE):
+                continue
+            
+            # Count changes in this non-test code file
+            additions = file_info.get('additions', 0)
+            deletions = file_info.get('deletions', 0)
+            non_test_code_changes += additions + deletions
+        
+        # Require minimum 20 lines of changes in non-test code files
+        if non_test_code_changes < 20:
+            if DEBUG_MODE: print(f"  - Skip: PR #{pr_number} has only {non_test_code_changes} lines of changes in non-test code files (minimum 20 required).")
+            continue
+            
+        # Run the original file analysis checks
         status, reason = analyze_pr_files(files)
         if status != "Pass":
             if DEBUG_MODE: print(f"  - Skip: {reason}")
             continue
         
-        if DEBUG_MODE: print(f"  - Pass: Meets all logical criteria.")
+        if DEBUG_MODE: print(f"  - Pass: Meets all logical criteria (non-test code changes: {non_test_code_changes} lines).")
         # Store the issue number with the PR data
         pr_data = pr.copy()
         pr_data['issue_number'] = issue_number
+        pr_data['non_test_code_changes'] = non_test_code_changes
         logically_relevant_prs.append(pr_data)
 
     print(f"✅ Found {len(logically_relevant_prs)} logically relevant PRs out of {len(all_prs)} total PRs checked.")
     return logically_relevant_prs, len(all_prs)
 
+def run_parallel_agentic_checks(prs_to_check, owner, repo):
+    """
+    Runs agentic checks on multiple PRs in parallel using ThreadPoolExecutor.
+    Returns a dictionary of agent decisions for each PR.
+    """
+    agent_decisions = {}
+    
+    def process_single_pr(pr):
+        """Process a single PR with agentic check."""
+        pr_number = pr['number']
+        try:
+            print(f"🤖 Processing PR #{pr_number} (parallel)...")
+            
+            issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr['issue_number']}"
+            issue_body = get_issue_body(issue_url)
+            
+            result, comment = run_llm_check(issue_body)
+            print(f"  ✅ PR #{pr_number}: {result} | {comment}")
+            
+            return pr_number, {"result": result, "comment": comment}
+        except Exception as e:
+            print(f"  ❌ PR #{pr_number}: Error - {e}")
+            return pr_number, {"result": "Bad PR", "comment": f"Error during processing: {e}"}
+    
+    # Use ThreadPoolExecutor for parallel processing
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        # Submit all PRs for processing
+        future_to_pr = {executor.submit(process_single_pr, pr): pr for pr in prs_to_check}
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_pr):
+            try:
+                pr_number, decision = future.result()
+                agent_decisions[pr_number] = decision
+            except Exception as e:
+                pr = future_to_pr[future]
+                pr_number = pr['number']
+                print(f"❌ Exception for PR #{pr_number}: {e}")
+                agent_decisions[pr_number] = {"result": "Bad PR", "comment": f"Exception: {e}"}
+    
+    print(f"📊 Completed parallel processing of {len(agent_decisions)} PRs")
+    return agent_decisions
+
 def run_agentic_check_on_repo(logically_relevant_prs, owner, repo):
     """
-    Runs the agentic (LLM) check on a list of logically relevant PRs.
+    Runs the agentic (LLM) check on a list of logically relevant PRs using parallel processing.
     Stops when the target number of good PRs is found.
     Returns the agent's decision for each PR.
     """
+    if not logically_relevant_prs:
+        return False, {}
+
+    # Apply threshold to determine how many PRs to process
+    total_prs = len(logically_relevant_prs)
+    prs_to_process = int(total_prs * PR_PROCESSING_THRESHOLD)
+    
+    print(f"📊 Processing {prs_to_process}/{total_prs} PRs (threshold: {PR_PROCESSING_THRESHOLD:.1%})")
+    
+    # Take only the first N PRs based on threshold
+    prs_to_check = logically_relevant_prs[:prs_to_process]
+    
     good_prs_found = 0
-    agent_decisions = {} # Store agent decisions for each PR
-
-    if not logically_relevant_prs: return False, agent_decisions
-
-    for pr in logically_relevant_prs:
-        pr_number = pr['number']
-        print(f"\n🤖 Running agentic check on PR #{pr_number}...")
+    agent_decisions = {}
+    
+    if ENABLE_PARALLEL_PROCESSING and len(prs_to_check) > 1:
+        print(f"🚀 Using parallel processing with {MAX_WORKERS} workers...")
+        agent_decisions = run_parallel_agentic_checks(prs_to_check, owner, repo)
         
-        issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr['issue_number']}"
-        issue_body = get_issue_body(issue_url)
+        # Count good PRs found
+        good_prs_found = sum(1 for decision in agent_decisions.values() 
+                           if decision.get('result') == 'Good PR')
         
-        result, comment = run_llm_check(issue_body)
-        print(f"  - LLM Result: {result} | Comment: {comment}")
-        
-        agent_decisions[pr_number] = {"result": result, "comment": comment}
-        
-        if result == "Good PR":
-            good_prs_found += 1
-            if good_prs_found >= TARGET_GOOD_PRS:
-                print(f"🎯 Target of {TARGET_GOOD_PRS} good PRs reached.")
-                break # Stop checking after reaching the target
-        time.sleep(1)
-        
+        # Check if we reached the target
+        if good_prs_found >= TARGET_GOOD_PRS:
+            print(f"🎯 Target of {TARGET_GOOD_PRS} good PRs reached.")
+    else:
+        print("🔄 Using sequential processing...")
+        for pr in prs_to_check:
+            pr_number = pr['number']
+            print(f"\n🤖 Running agentic check on PR #{pr_number}...")
+            
+            issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr['issue_number']}"
+            issue_body = get_issue_body(issue_url)
+            
+            result, comment = run_llm_check(issue_body)
+            print(f"  - LLM Result: {result} | Comment: {comment}")
+            
+            agent_decisions[pr_number] = {"result": result, "comment": comment}
+            
+            if result == "Good PR":
+                good_prs_found += 1
+                if good_prs_found >= TARGET_GOOD_PRS:
+                    print(f"🎯 Target of {TARGET_GOOD_PRS} good PRs reached.")
+                    break
+            time.sleep(1)
+    
     return good_prs_found >= TARGET_GOOD_PRS, agent_decisions
 
-def write_prs_to_csv(owner, repo, relevant_prs, agent_decisions):
+def write_prs_to_csv(owner, repo, relevant_prs, agent_decisions, output_dir=None):
     """Writes the list of relevant PRs and their issues to a repo-specific CSV file."""
-    output_dir = "repo_evaluator/pr_reports"
+    if output_dir is None:
+        if SINGLE_REPO_MODE:
+            output_dir = SINGLE_REPO_OUTPUT_DIR
+        else:
+            output_dir = get_language_output_dir()
+    
     os.makedirs(output_dir, exist_ok=True)
-    filename = os.path.join(output_dir, f"{owner}_{repo}_relevant_prs.csv")
+    filename = os.path.join(output_dir, f"{owner}__{repo}_relevant_prs.csv")
     
     with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['pr_number', 'pr_url', 'issue_number', 'issue_url', 'agent_result', 'agent_comment']
+        fieldnames = ['pr_id', 'pr_url', 'issue_id', 'issue_url', 'non_test_code_changes', 'agent_result', 'agent_comment']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         for pr in relevant_prs:
             pr_num = pr['number']
             issue_num = pr['issue_number']
             decision = agent_decisions.get(pr_num, {})
+            non_test_code_changes = pr.get('non_test_code_changes', 0)
             writer.writerow({
-                'pr_number': pr_num,
+                'pr_id': pr_num,
                 'pr_url': f"https://github.com/{owner}/{repo}/pull/{pr_num}",
-                'issue_number': issue_num,
+                'issue_id': issue_num,
                 'issue_url': f"https://github.com/{owner}/{repo}/issues/{issue_num}",
+                'non_test_code_changes': non_test_code_changes,
                 'agent_result': decision.get('result', 'Not Checked'),
                 'agent_comment': decision.get('comment', '')
             })
     print(f"📄 Saved PR report for {owner}/{repo} to {filename}")
 
+def run_single_repo_analysis(repo_url):
+    """
+    Runs the agentic PR checker on a single repository.
+    This function processes one repo directly without using Google Sheets.
+    """
+    print(f"🔍 Running single repo analysis for: {repo_url}")
+    
+    owner, repo = parse_github_url(repo_url)
+    if not owner or not repo:
+        print(f"❌ Invalid repository URL: {repo_url}")
+        return False
+    
+    print(f"📊 Processing repository: {owner}/{repo}")
+    
+    # Find logically relevant PRs
+    relevant_prs, total_count = find_logically_relevant_prs(owner, repo)
+    print(f"📈 Total PRs found: {total_count}")
+    print(f"📈 Logically relevant PRs: {len(relevant_prs)}")
+    
+    # Run agentic checks
+    agent_decisions = {}
+    if relevant_prs:
+        passed, agent_decisions = run_agentic_check_on_repo(relevant_prs, owner, repo)
+        print(f"🤖 Agentic check result: {'PASSED' if passed else 'FAILED'}")
+        
+        # Write results to CSV
+        write_prs_to_csv(owner, repo, relevant_prs, agent_decisions, get_language_output_dir())
+        
+        # Print summary
+        good_prs = sum(1 for decision in agent_decisions.values() if decision.get('result') == 'Good PR')
+        print(f"✅ Good PRs found: {good_prs}")
+        print(f"❌ Bad PRs found: {len(agent_decisions) - good_prs}")
+        
+        return passed
+    else:
+        print("⏭️ No logically relevant PRs found for agentic analysis.")
+        return False
+
 # --- Main Script ---
 def main():
     print("--- Agentic PR Checker ---")
     
+    # Parse command line arguments
+    args = parse_command_line_args()
+    update_config_from_args(args)
+    
     # Display language configuration
     print_language_configuration()
+    
+    # Check for single repo mode
+    if SINGLE_REPO_MODE:
+        print("🎯 SINGLE REPO MODE ENABLED")
+        print(f"Target Repository: {SINGLE_REPO_URL}")
+        print("=" * 60)
+        
+        success = run_single_repo_analysis(SINGLE_REPO_URL)
+        if success:
+            print("🎉 Single repo analysis completed successfully!")
+        else:
+            print("❌ Single repo analysis failed or no good PRs found.")
+        return
     
     if DEBUG_MODE:
         print("🕵️ DEBUG MODE ENABLED 🕵️")
@@ -587,7 +840,7 @@ def main():
         agent_decisions = {}
         if relevant_prs:
             passed, agent_decisions = run_agentic_check_on_repo(relevant_prs, owner, repo)
-            write_prs_to_csv(owner, repo, relevant_prs, agent_decisions)
+            write_prs_to_csv(owner, repo, relevant_prs, agent_decisions, get_language_output_dir())
             update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['agentic_check'], "Yes" if passed else "No")
         else:
             print("⏭️ Skipping agentic check: No logically relevant PRs found.")
@@ -773,6 +1026,53 @@ def evaluate_repo_prs(user_repo):
         'total_agent_time': total_agent_time,
         'total_evaluation_time': total_elapsed_time
     }
+
+def parse_command_line_args():
+    """
+    Parse command line arguments for configuration options.
+    """
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Agentic PR Checker with parallel processing support')
+    parser.add_argument('--model', type=str, default=LLM_MODEL,
+                       help=f'LLM model to use (default: {LLM_MODEL})')
+    parser.add_argument('--target-good-prs', type=int, default=TARGET_GOOD_PRS,
+                       help=f'Target number of good PRs to find (default: {TARGET_GOOD_PRS})')
+    parser.add_argument('--parallel', action='store_true', default=ENABLE_PARALLEL_PROCESSING,
+                       help='Enable parallel processing (default: enabled)')
+    parser.add_argument('--no-parallel', action='store_true',
+                       help='Disable parallel processing')
+    parser.add_argument('--max-workers', type=int, default=MAX_WORKERS,
+                       help=f'Maximum number of parallel workers (default: {MAX_WORKERS})')
+    parser.add_argument('--threshold', type=float, default=PR_PROCESSING_THRESHOLD,
+                       help=f'Threshold for PR processing (0.0-1.0, default: {PR_PROCESSING_THRESHOLD})')
+    parser.add_argument('--debug', action='store_true',
+                       help='Enable debug mode')
+    parser.add_argument('--debug-repo', type=str, default=DEBUG_REPO_URL,
+                       help=f'Repository URL for debug mode (default: {DEBUG_REPO_URL})')
+    
+    return parser.parse_args()
+
+def update_config_from_args(args):
+    """
+    Update global configuration based on command line arguments.
+    """
+    global LLM_MODEL, TARGET_GOOD_PRS, ENABLE_PARALLEL_PROCESSING, MAX_WORKERS, PR_PROCESSING_THRESHOLD, DEBUG_MODE, DEBUG_REPO_URL
+    
+    LLM_MODEL = args.model
+    TARGET_GOOD_PRS = args.target_good_prs
+    
+    if args.no_parallel:
+        ENABLE_PARALLEL_PROCESSING = False
+    else:
+        ENABLE_PARALLEL_PROCESSING = args.parallel
+    
+    MAX_WORKERS = args.max_workers
+    PR_PROCESSING_THRESHOLD = max(0.0, min(1.0, args.threshold))  # Clamp between 0.0 and 1.0
+    
+    if args.debug:
+        DEBUG_MODE = True
+        DEBUG_REPO_URL = args.debug_repo
 
 if __name__ == '__main__':
     try:

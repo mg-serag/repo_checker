@@ -1,0 +1,3 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+3475,https://github.com/dmulloy2/ProtocolLib/pull/3475,3474,https://github.com/dmulloy2/ProtocolLib/issues/3474,268,Bad PR,"The issue is vague and merely a request for version support without providing specific, actionable details."
+3381,https://github.com/dmulloy2/ProtocolLib/pull/3381,3379,https://github.com/dmulloy2/ProtocolLib/issues/3379,1018,Bad PR,"The issue is simply a dumped error log with a stack trace and does not include a specific, actionable description of what should be fixed or implemented. It lacks clear instructions for how a developer should address the problem, making it unsuitable as a 'Good PR' issue."

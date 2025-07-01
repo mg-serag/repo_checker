@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+37216,https://github.com/dbeaver/dbeaver/pull/37216,37042,https://github.com/dbeaver/dbeaver/issues/37042,1176,Good PR,"The issue clearly outlines a specific problem (missing table_alias.* handling) without being a revert, question, or vague request, making it actionable for a developer."

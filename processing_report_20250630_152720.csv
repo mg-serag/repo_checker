@@ -1,0 +1,30 @@
+PROCESSING SUMMARY REPORT
+Generated: 2025-06-30 15:27:20
+Total Repositories Processed: 14
+Successful: 14
+Failed: 0
+
+TOTALS ACROSS ALL REPOSITORIES
+Initial PRs,After Date Filter,After Good PRs Filter,After LT Dedup,After Local Dedup,Final PRs
+1815,1190,141,141,141,141
+
+GOOD PRS ANALYSIS
+Good PRs in Reports,Missing Good PRs,Recovery Rate
+161,20,87.6%
+
+DETAILED REPOSITORY STATISTICS
+Repository,Language,Initial PRs,After Date Filter,After Good PRs Filter,After LT Dedup,After Local Dedup,Final PRs,Good PRs in Reports,Missing Good PRs Count,Status,Error
+apache/accumulo,Java,176,77,31,31,31,31,36,5,Success,
+apache/iceberg,Java,98,97,11,11,11,11,14,3,Success,
+apache/logging-log4j2,Java,82,27,3,3,3,3,3,0,Success,
+apache/paimon,Java,153,141,29,29,29,29,29,0,Success,
+apache/seatunnel,Java,222,187,0,0,0,0,5,5,Success,
+checkstyle/checkstyle,Java,226,226,2,2,2,2,7,5,Success,
+eclipse/jetty.project,Java,188,83,22,22,22,22,22,0,Success,
+junit-team/junit5,Java,195,67,6,6,6,6,6,0,Success,
+openhab/openhab-addons,Java,39,28,3,3,3,3,3,0,Success,
+openhab/openhab-core,Java,86,18,3,3,3,3,3,0,Success,
+openrewrite/rewrite,Java,170,109,3,3,3,3,3,0,Success,
+spring-projects/spring-integration,Java,50,8,0,0,0,0,0,0,Success,
+spring-projects/spring-security,Java,23,15,5,5,5,5,5,0,Success,
+vaadin/flow,Java,107,107,23,23,23,23,25,2,Success,

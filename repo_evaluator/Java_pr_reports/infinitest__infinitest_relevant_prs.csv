@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+427,https://github.com/infinitest/infinitest/pull/427,425,https://github.com/infinitest/infinitest/issues/425,104,Good PR,"The issue provides clear context, detailed reproduction steps, and an actionable bug description, making it suitable for a PR that addresses a specific problem. It is neither a revert nor a vague help request."

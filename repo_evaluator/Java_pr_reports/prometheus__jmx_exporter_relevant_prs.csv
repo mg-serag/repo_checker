@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1042,https://github.com/prometheus/jmx_exporter/pull/1042,1041,https://github.com/prometheus/jmx_exporter/issues/1041,73,Good PR,"The issue clearly describes a specific, actionable feature request, detailing the current limitation and suggesting a solution with an available implementation. It is neither a revert request nor a vague question, making it suitable for a Good PR."

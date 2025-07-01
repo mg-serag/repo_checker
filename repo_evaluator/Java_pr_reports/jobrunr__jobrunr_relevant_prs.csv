@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1207,https://github.com/jobrunr/jobrunr/pull/1207,960,https://github.com/jobrunr/jobrunr/issues/960,128,Good PR,"The issue clearly outlines a specific feature request by proposing the addition of kotlinx.serialization as a JsonMapper option, includes a detailed solution and considered alternatives, and is not a revert or vague question."

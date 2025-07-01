@@ -1,0 +1,3 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+3735,https://github.com/assertj/assertj/pull/3735,3733,https://github.com/assertj/assertj/issues/3733,55,Bad PR,"The issue is more of a bug report with a question about the workaround's implications, making it a vague query rather than a clear, actionable task suitable for a PR."
+3713,https://github.com/assertj/assertj/pull/3713,2596,https://github.com/assertj/assertj/issues/2596,468,Good PR,"The issue clearly describes a specific improvement regarding stream handling using mark/reset when available, which is actionable and not a revert or vague request."

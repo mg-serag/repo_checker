@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2378,https://github.com/diffplug/spotless/pull/2378,2317,https://github.com/diffplug/spotless/issues/2317,229,Good PR,"The issue clearly describes a specific problem with caching in the spotless task, provides context (including configuration snippet and screenshot), and does not simply ask a vague question or request a revert."

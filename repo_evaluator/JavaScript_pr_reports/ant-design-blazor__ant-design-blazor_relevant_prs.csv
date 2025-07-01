@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+4619,https://github.com/ant-design-blazor/ant-design-blazor/pull/4619,4609,https://github.com/ant-design-blazor/ant-design-blazor/issues/4609,189,Good PR,"The issue clearly describes a specific bug with reproducible steps and detailed error information. It is actionable and not a revert or vague question, making it suitable for a 'Good PR'."

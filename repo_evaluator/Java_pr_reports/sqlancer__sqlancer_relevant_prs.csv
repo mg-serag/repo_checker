@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1084,https://github.com/sqlancer/sqlancer/pull/1084,824,https://github.com/sqlancer/sqlancer/issues/824,101,Bad PR,"The issue is a vague comment expressing disappointment that PostgreSQL support isn't considered, and it lacks clear, actionable steps. It does not meet the criteria for a 'Good PR'."

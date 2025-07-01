@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+4095,https://github.com/xetorthio/jedis/pull/4095,4108,https://github.com/xetorthio/jedis/issues/4108,893,Good PR,"The issue clearly lays out specific feature requests with actionable details and supporting links, and it doesn't merely ask for a rollback or present a vague query."

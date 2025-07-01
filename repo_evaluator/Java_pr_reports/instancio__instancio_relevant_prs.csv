@@ -1,0 +1,4 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1294,https://github.com/instancio/instancio/pull/1294,1290,https://github.com/instancio/instancio/issues/1290,28,Good PR,"The issue provides a clear and actionable bug description with reproducible code examples, expected vs actual behavior, and sufficient context. It is not a revert, nor is it merely a vague question or documentation request."
+1288,https://github.com/instancio/instancio/pull/1288,1281,https://github.com/instancio/instancio/issues/1281,92,Good PR,"The issue describes a specific, actionable feature that extends the functionality of the oneOf generator. It clearly explains the problem and provides examples without simply reverting changes or asking vague questions, making it suitable for a Good PR."
+1283,https://github.com/instancio/instancio/pull/1283,1278,https://github.com/instancio/instancio/issues/1278,125,Not Checked,

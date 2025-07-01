@@ -22,7 +22,7 @@ SPREADSHEET_KEY = '1XMbstebCi1xFSwJ7cTN-DXv4jFmdH2owWBE3R7YsXK0'
 
 # --- Language Configuration ---
 # Set the target language for evaluation
-TARGET_LANGUAGE = 'Go'  # Options: 'Java', 'JavaScript', 'Python', 'Go'
+TARGET_LANGUAGE = 'Java'  # Options: 'Java', 'JavaScript', 'Python', 'Go'
 
 # Language-specific configurations
 LANGUAGE_CONFIG = {
@@ -85,11 +85,11 @@ LANGUAGE_CONFIG = {
 }
 
 # Get current language configuration
-LANG_CONFIG = LANGUAGE_CONFIG.get(TARGET_LANGUAGE, LANGUAGE_CONFIG['Java'])
+LANG_CONFIG = LANGUAGE_CONFIG.get(TARGET_LANGUAGE, LANGUAGE_CONFIG['JavaScript'])
 SHEET_NAME = LANG_CONFIG['sheet_name']
 
 # --- Labeling Tool Configuration ---
-LT_TOKEN = "YOUR_LT_TOKEN"
+LT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Im1vaGFtYWQuc0B0dXJpbmcuY29tIiwic3ViIjoxMTYsImlhdCI6MTc1MDc0NzY0MywiZXhwIjoxNzUxMzUyNDQzfQ.De_PSAqQl306vqf7BEFIYbjo66zehS8coPtUEfZhk8w"
 
 # --- Column Configuration ---
 # Define expected column headers and their default indices (0-based)
@@ -449,7 +449,7 @@ def update_data_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_in
                                 print(f"  Warning: Could not parse createdAt for {user_repo}: {created_at} - {e}")
                         
                         cell_updates.extend([
-                            gspread.Cell(sheet_row, added_col_idx_1, "YES"),
+                            gspread.Cell(sheet_row, added_col_idx_1, "Yes"),
                             gspread.Cell(sheet_row, tasks_count_col_idx_1, total_tasks),
                             gspread.Cell(sheet_row, improper_col_idx_1, improper_tasks),
                             gspread.Cell(sheet_row, batch_link_col_idx_1, batch_link),
@@ -462,7 +462,7 @@ def update_data_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_in
                 else:
                     # Mark as "NO" and clear fields
                     cell_updates.extend([
-                        gspread.Cell(sheet_row, added_col_idx_1, "NO"),
+                        gspread.Cell(sheet_row, added_col_idx_1, "No"),
                         gspread.Cell(sheet_row, tasks_count_col_idx_1, ""),
                         gspread.Cell(sheet_row, improper_col_idx_1, ""),
                         gspread.Cell(sheet_row, batch_link_col_idx_1, ""),

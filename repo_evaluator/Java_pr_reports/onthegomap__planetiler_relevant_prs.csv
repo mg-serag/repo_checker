@@ -1,0 +1,5 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1109,https://github.com/onthegomap/planetiler/pull/1109,1105,https://github.com/onthegomap/planetiler/issues/1105,623,Good PR,"The issue suggests a clear, actionable improvement by proposing the use of the Visvalingam-Whyatt algorithm along with supporting references. It is not asking for a revert, nor is it a vague question, making it suitable for a ""Good PR."""
+1101,https://github.com/onthegomap/planetiler/pull/1101,1091,https://github.com/onthegomap/planetiler/issues/1091,25,Good PR,"The issue clearly describes a specific bug with detailed reproduction steps and an expected behavior. It is actionable, not a revert, and not a vague request."
+1100,https://github.com/onthegomap/planetiler/pull/1100,1098,https://github.com/onthegomap/planetiler/issues/1098,33,Not Checked,
+1084,https://github.com/onthegomap/planetiler/pull/1084,979,https://github.com/onthegomap/planetiler/issues/979,1150,Not Checked,

@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1875,https://github.com/jbangdev/jbang/pull/1875,1776,https://github.com/jbangdev/jbang/issues/1776,83,Good PR,The issue clearly outlines a specific feature request for a global off switch (or options) for integrations. It provides clear and actionable details without reverting any changes or being just a vague question.

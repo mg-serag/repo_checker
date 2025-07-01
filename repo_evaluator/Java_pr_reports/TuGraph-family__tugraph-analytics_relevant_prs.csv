@@ -1,0 +1,3 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+457,https://github.com/TuGraph-family/tugraph-analytics/pull/457,456,https://github.com/TuGraph-family/tugraph-analytics/issues/456,222,Bad PR,Issue body is too short.
+424,https://github.com/TuGraph-family/tugraph-analytics/pull/424,394,https://github.com/TuGraph-family/tugraph-analytics/issues/394,409,Bad PR,Issue body is too short.

@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+16098,https://github.com/coder/coder/pull/16098,15290,https://github.com/coder/coder/issues/15290,1596,Bad PR,"The issue describes current limitations by referencing external issues but doesn't offer a clear and actionable solution path or sufficient context. It doesn't specify specific changes to be made, making it too vague for a 'Good PR'."

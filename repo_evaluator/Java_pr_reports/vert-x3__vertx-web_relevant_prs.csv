@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+2672,https://github.com/vert-x3/vertx-web/pull/2672,2663,https://github.com/vert-x3/vertx-web/issues/2663,112,Good PR,"The issue clearly describes a specific, actionable feature with examples and context. Although it ends with a minor release timeline query, the core request is actionable and is not a revert or vague question."

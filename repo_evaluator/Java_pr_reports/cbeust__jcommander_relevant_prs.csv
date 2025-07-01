@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+593,https://github.com/cbeust/jcommander/pull/593,493,https://github.com/cbeust/jcommander/issues/493,271,Bad PR,"The issue is framed as a question about accepting pull requests rather than providing a clear, actionable problem statement or feature request. This makes it too vague to be considered a Good PR."

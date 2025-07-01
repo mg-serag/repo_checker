@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+5055,https://github.com/knowm/XChange/pull/5055,5008,https://github.com/knowm/XChange/issues/5008,24,Bad PR,"The issue is phrased as a question asking for help with an error, which is vague and not clearly actionable. It does not describe a specific and self-contained problem to be addressed."

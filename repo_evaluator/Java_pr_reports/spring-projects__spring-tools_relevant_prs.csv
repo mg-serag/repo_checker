@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1421,https://github.com/spring-projects/spring-tools/pull/1421,1288,https://github.com/spring-projects/spring-tools/issues/1288,618,Good PR,"The issue clearly describes a specific problem with the current implementation of AnnotationHierarchies and outlines a clear strategy for resolution (caching and cleanup). It is actionable, not a revert, and not a vague request or question."

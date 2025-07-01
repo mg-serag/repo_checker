@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+300,https://github.com/spring-petclinic/spring-petclinic-microservices/pull/300,251,https://github.com/spring-petclinic/spring-petclinic-microservices/issues/251,611,Good PR,"The issue clearly suggests refactoring by removing Lombok and using Java records, which is actionable and specific. It isn't a revert, a vague question, or a documentation request."

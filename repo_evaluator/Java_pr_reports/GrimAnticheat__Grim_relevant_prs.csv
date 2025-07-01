@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+1735,https://github.com/GrimAnticheat/Grim/pull/1735,1548,https://github.com/GrimAnticheat/Grim/issues/1548,877,Good PR,"The issue clearly describes a feature proposal to drop support for older Java versions and only support Java 17 and above. It provides context, testing details, and relevant references, making the issue actionable and not merely a revert, question, or vague request."
