@@ -41,85 +41,29 @@ SINGLE_REPO_OUTPUT_DIR = "repo_evaluator/pr_reports"  # Output directory for sin
 
 # --- Spreadsheet Configuration ---
 # Key for the sheet to be processed
-SPREADSHEET_KEY = "1XMbstebCi1xFSwJ7cTN-DXv4jFmdH2owWBE3R7YsXK0"
+from config_utils import get_spreadsheet_key
+SPREADSHEET_KEY = get_spreadsheet_key()
 
 # Language-specific configurations for agentic PR checks
-LANGUAGE_CONFIG = {
-    'Java': {
-        'sheet_name': 'Java',
-        'target_language': 'Java',
-        'source_ext': {'.java'},
-        'dependency_files': {
-            'pom.xml', 'build.gradle', 'build.gradle.kts',
-            'settings.gradle', 'settings.gradle.kts',
-            'gradlew', 'gradlew.bat', 'mvnw', 'mvnw.cmd'
-        },
-    },
-    'JavaScript': {
-        'sheet_name': 'JS/TS',
-        'target_language': 'JavaScript',
-        'source_ext': {'.js', '.jsx', '.ts', '.tsx'},
-        'dependency_files': {
-            'package.json', 'yarn.lock', 'pnpm-lock.yaml', 'package-lock.json',
-            'webpack.config.js', 'rollup.config.js', 'vite.config.js',
-            'babel.config.js', '.eslintrc.js', '.prettierrc.js'
-        },
-    },
-    'TypeScript': {
-        'sheet_name': 'JS/TS',
-        'target_language': 'TypeScript',
-        'source_ext': {'.ts', '.tsx'},
-        'dependency_files': {
-            'package.json', 'yarn.lock', 'pnpm-lock.yaml', 'package-lock.json',
-            'tsconfig.json', 'tsconfig.build.json', 'webpack.config.js',
-            'rollup.config.js', 'vite.config.ts', 'babel.config.js',
-            '.eslintrc.js', '.prettierrc.js'
-        },
-    },
-    'Python': {
-        'sheet_name': 'Python',
-        'target_language': 'Python',
-        'source_ext': {'.py'},
-        'dependency_files': {
-            'requirements.txt', 'pyproject.toml', 'setup.py', 'Pipfile',
-            'Pipfile.lock', 'poetry.lock', 'tox.ini', 'pytest.ini'
-        },
-    },
-    'Go': {
-        'sheet_name': 'Go',
-        'target_language': 'Go',
-        'source_ext': {'.go'},
-        'dependency_files': {
-            'go.mod', 'go.sum', 'Gopkg.toml', 'Gopkg.lock'
-        },
-    },
-    'C/C++': {
-        'sheet_name': 'C/C++',
-        'target_language': 'C',  # GitHub API returns 'C' for C/C++ repos
-        'source_ext': {'.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.hh', '.hxx'},
-        'dependency_files': {
-            'CMakeLists.txt', 'Makefile', 'configure', 'configure.ac',
-            'autogen.sh', 'bootstrap', 'build.sh', 'setup.py',
-            'package.json', 'Cargo.toml', 'meson.build', 'SConstruct'
-        },
-    },
-    'Rust': {
-        'sheet_name': 'Rust',
-        'target_language': 'Rust',
-        'source_ext': {'.rs'},
-        'dependency_files': {
-            'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'
-        },
-    }
-}
+from config_utils import (
+    get_language_config, get_language_sheet_name, get_language_target_language,
+    get_source_extensions, get_dependency_files, get_all_languages
+)
 
-# Load token from environment variable
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+# Get current language configuration
+LANG_CONFIG = get_language_config(TARGET_LANGUAGE)
+SHEET_NAME = get_language_sheet_name(TARGET_LANGUAGE)
+LANGUAGE = get_language_target_language(TARGET_LANGUAGE)
+
+# Load tokens from configuration
+from config_utils import get_github_token, get_openai_api_key
+
+GITHUB_TOKEN = get_github_token()
 if not GITHUB_TOKEN:
-    print("❌ Error: GITHUB_TOKEN environment variable not set. The script cannot run without it.")
+    print("❌ Error: GITHUB_TOKEN not set in config.json or environment variable. The script cannot run without it.")
     sys.exit(1)
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = get_openai_api_key()
 CREDS_JSON_PATH = os.path.join(os.path.dirname(__file__), 'creds.json')
 SCOPE = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 
@@ -129,22 +73,34 @@ SHEET_NAME = LANG_CONFIG['sheet_name']
 LANGUAGE = LANG_CONFIG['target_language']
 
 # Non-code/text extensions that are always acceptable regardless of LANGUAGE
-NON_CODE_EXT = {
-    '.md', '.markdown', '.txt', '.json', '.yml', '.yaml', '.xml', '.toml', '.ini', '.cfg', '.lock',
-    '.html', '.htm', '.css', '.scss', '.sass', '.less', '.svg', '.png', '.jpg', '.jpeg', '.gif',
-    '.ico', '.woff', '.woff2', '.ttf', '.eot', '.csv', '.tsv', '.log', '.sql', '.sh', '.bat',
-    '.ps1', '.dockerfile', '.gitignore', '.gitattributes', '.editorconfig', '.browserslistrc'
-}
+from config_utils import get_non_code_extensions, get_universal_test_extensions, get_test_directories
 
-# Universal test file extensions that are always considered test files
-UNIVERSAL_TEST_EXT = {'.snap', '.spec'}
+try:
+    NON_CODE_EXT = get_non_code_extensions()
+    UNIVERSAL_TEST_EXT = get_universal_test_extensions()
+    TEST_DIRECTORIES = get_test_directories()
+except (FileNotFoundError, KeyError):
+    # Fallback to hardcoded values if config file is not available
+    NON_CODE_EXT = {
+        '.md', '.markdown', '.txt', '.json', '.yml', '.yaml', '.xml', '.toml', '.ini', '.cfg', '.lock',
+        '.html', '.htm', '.css', '.scss', '.sass', '.less', '.svg', '.png', '.jpg', '.jpeg', '.gif',
+        '.ico', '.woff', '.woff2', '.ttf', '.eot', '.csv', '.tsv', '.log', '.sql', '.sh', '.bat',
+        '.ps1', '.dockerfile', '.gitignore', '.gitattributes', '.editorconfig', '.browserslistrc'
+    }
+    UNIVERSAL_TEST_EXT = {'.snap', '.spec'}
+    TEST_DIRECTORIES = ['/test/', '/tests/', '/spec/']
 
 # Build one big set with _all_ source extensions so we can identify disallowed ones
 # dynamically. This ensures that when LANGUAGE = "Java", any .py or .ts files will
 # be flagged automatically without maintaining a bespoke disallowed list.
 ALL_SOURCE_EXT = set()
-for _lang_cfg in LANGUAGE_CONFIG.values():
-    ALL_SOURCE_EXT.update(_lang_cfg["source_ext"])
+try:
+    all_languages = get_all_languages()
+    for lang_name in all_languages.keys():
+        ALL_SOURCE_EXT.update(get_source_extensions(lang_name))
+except (FileNotFoundError, KeyError):
+    # Fallback to basic extensions if config file is not available
+    ALL_SOURCE_EXT = {'.java', '.js', '.jsx', '.ts', '.tsx', '.py', '.go', '.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.hh', '.hxx', '.rs'}
 
 
 def is_english(text):
@@ -167,12 +123,21 @@ def is_english(text):
 
 def _get_language_config(lang_name: str):
     """Return config dict for a language, falling back to empty sets if unknown."""
-    return LANGUAGE_CONFIG.get(lang_name, {
-        "source_ext": set(),
-        "dependency_files": set(),
-        "sheet_name": "Unknown",
-        "target_language": "Unknown"
-    })
+    try:
+        lang_config = get_language_config(lang_name)
+        return {
+            "source_ext": get_source_extensions(lang_name),
+            "dependency_files": get_dependency_files(lang_name),
+            "sheet_name": lang_config['sheet_name'],
+            "target_language": lang_config['target_language']
+        }
+    except (KeyError, FileNotFoundError):
+        return {
+            "source_ext": set(),
+            "dependency_files": set(),
+            "sheet_name": "Unknown",
+            "target_language": "Unknown"
+        }
 
 
 def _is_test_file(filepath: str, lang_name: str) -> bool:
@@ -182,7 +147,6 @@ def _is_test_file(filepath: str, lang_name: str) -> bool:
     """
     path_norm = filepath.replace("\\", "/").lower()
     base = os.path.basename(path_norm)
-    lang_cfg = _get_language_config(lang_name)
     
     # Check for universal test file extensions
     ext = os.path.splitext(filepath)[1].lower()
@@ -190,26 +154,33 @@ def _is_test_file(filepath: str, lang_name: str) -> bool:
         return True
     
     # Check for test directories
-    if "/test/" in path_norm or "/tests/" in path_norm or "/spec/" in path_norm:
+    if any(test_dir in path_norm for test_dir in TEST_DIRECTORIES):
         return True
     
     # Check for test patterns in filename
     if any(token in base for token in ("test", "spec")):
         return True
     
-    # Language-specific heuristics
-    if lang_name == "Java" and base.endswith("test.java"):
-        return True
-    if lang_name == "Python" and (base.startswith("test_") or base.endswith("_test.py")):
-        return True
-    if lang_name in ["JavaScript", "TypeScript"] and any(base.endswith(suffix) for suffix in ['.test.js', '.test.jsx', '.test.ts', '.test.tsx', '.spec.js', '.spec.jsx', '.spec.ts', '.spec.tsx']):
-        return True
-    if lang_name == "Go" and base.endswith("_test.go"):
-        return True
-    if lang_name == "C/C++" and any(base.endswith(suffix) for suffix in ['.test.c', '.test.cpp', '.test.cc', '.test.cxx', '_test.c', '_test.cpp', '_test.cc', '_test.cxx']):
-        return True
-    if lang_name == "Rust" and base.endswith("_test.rs"):
-        return True
+    # Language-specific test patterns
+    try:
+        from config_utils import get_test_patterns
+        test_patterns = get_test_patterns(lang_name)
+        if any(base.endswith(pattern) or base.startswith(pattern) for pattern in test_patterns):
+            return True
+    except (FileNotFoundError, KeyError):
+        # Fallback to hardcoded patterns if config is not available
+        if lang_name == "Java" and base.endswith("test.java"):
+            return True
+        if lang_name == "Python" and (base.startswith("test_") or base.endswith("_test.py")):
+            return True
+        if lang_name in ["JavaScript", "TypeScript"] and any(base.endswith(suffix) for suffix in ['.test.js', '.test.jsx', '.test.ts', '.test.tsx', '.spec.js', '.spec.jsx', '.spec.ts', '.spec.tsx']):
+            return True
+        if lang_name == "Go" and base.endswith("_test.go"):
+            return True
+        if lang_name == "C/C++" and any(base.endswith(suffix) for suffix in ['.test.c', '.test.cpp', '.test.cc', '.test.cxx', '_test.c', '_test.cpp', '_test.cc', '_test.cxx']):
+            return True
+        if lang_name == "Rust" and base.endswith("_test.rs"):
+            return True
     
     return False
 
@@ -226,8 +197,8 @@ def print_language_configuration():
     print(f"Spreadsheet Key: {SPREADSHEET_KEY}")
     print(f"Output Directory: {get_language_output_dir()}")
     print("-" * 80)
-    print(f"Source Extensions: {', '.join(sorted(LANG_CONFIG['source_ext']))}")
-    print(f"Dependency Files: {', '.join(sorted(LANG_CONFIG['dependency_files']))}")
+    print(f"Source Extensions: {', '.join(sorted(get_source_extensions(TARGET_LANGUAGE)))}")
+    print(f"Dependency Files: {', '.join(sorted(get_dependency_files(TARGET_LANGUAGE)))}")
     print("-" * 80)
     print(f"Universal Test Extensions: {', '.join(sorted(UNIVERSAL_TEST_EXT))}")
     print(f"Non-Code Extensions: {', '.join(sorted(NON_CODE_EXT))}")
@@ -445,9 +416,8 @@ def analyze_pr_files(files):
     if not files:
         return None, "No files found in PR."
 
-    lang_cfg = _get_language_config(LANGUAGE)
-    allowed_ext = lang_cfg["source_ext"]
-    dependency_files = lang_cfg["dependency_files"]
+    allowed_ext = get_source_extensions(LANGUAGE)
+    dependency_files = get_dependency_files(LANGUAGE)
 
     filenames = [f["filename"] for f in files]
 
@@ -559,9 +529,8 @@ def find_logically_relevant_prs(owner, repo):
             continue
         
         # Count additions/deletions only in non-test code files
-        lang_cfg = _get_language_config(LANGUAGE)
-        allowed_ext = lang_cfg["source_ext"]
-        dependency_files = lang_cfg["dependency_files"]
+        allowed_ext = get_source_extensions(LANGUAGE)
+        dependency_files = get_dependency_files(LANGUAGE)
         
         non_test_code_changes = 0
         for file_info in files:

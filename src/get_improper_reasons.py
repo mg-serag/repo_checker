@@ -4,11 +4,14 @@ import csv
 import datetime
 
 
-LT_TOKEN = "YOUR_LT_TOKEN"
+from config_utils import get_lt_token
+LT_TOKEN = get_lt_token()
 
+
+from config_utils import get_project_id
 
 def get_improper():
-    project_id = 41
+    project_id = get_project_id('javascript')
     url = f"https://eval.turing.com/api/conversations?limit=5000&page=1&join[0]=project%7C%7Cid,name,status,projectType,supportsFunctionCalling,supportsWorkflows,supportsMultipleFilesPerTask,jibbleActivity,instructionsLink,readonly,averageHandleTimeMinutes&join[1]=batch%7C%7Cid,name,status,projectId,jibbleActivity,maxClaimGoldenTaskAllowed,averageHandleTimeMinutes&join[2]=currentUser%7C%7Cid,name,turingEmail,profilePicture,isBlocked&join[3]=currentUser.teamLead%7C%7Cid,name,turingEmail,profilePicture,isBlocked&join[4]=seed%7C%7Cmetadata,turingMetadata&join[5]=labels%7C%7Cid,labelId&join[6]=labels.label&join[7]=latestLabelingWorkflow&join[8]=latestLabelingWorkflow.workflow%7C%7Cstatus,createdAt,currentWorkflowStatus&join[9]=latestLabelingWorkflow.workflow.currentCollaborator%7C%7Cid&join[10]=latestLabelingWorkflow.workflow.currentCollaborator.collaborator%7C%7Cid,name,turingEmail,profilePicture,isBlocked&join[11]=latestLabelingWorkflow.workflow.collaborators%7C%7Crole&join[12]=latestLabelingWorkflow.workflow.collaborators.collaborator%7C%7Cid,name,turingEmail,profilePicture,isBlocked&join[13]=latestLabelingWorkflow.workflow.collaborators.collaborator.teamLead%7C%7Cid,name,turingEmail,profilePicture,isBlocked&join[14]=statusHistory%7C%7Cid,conversationId,oldStatus,newStatus,formStage,updatedAt,createdAt&filter[0]=status%7C%7C$eq%7C%7Cimproper&filter[1]=batch.status%7C%7C$ne%7C%7Cdraft&filter[2]=projectId%7C%7C$eq%7C%7C{project_id}&filter[3]=batch.status%7C%7C$ne%7C%7Cdraft"
     response = requests.get(url, headers={"Authorization": f"Bearer {LT_TOKEN}"})
     return response.json()

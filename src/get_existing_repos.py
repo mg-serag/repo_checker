@@ -4,13 +4,15 @@ import datetime
 import os
 
 # --- CONFIGURATION ---
-# PROJECT_ID = 40 # Python project 
-# PROJECT_ID = 41 # JS project
-# PROJECT_ID = 42 # Java project
-PROJECT_ID = 43 # Go project
+from config_utils import get_project_id
+# PROJECT_ID = get_project_id('python') # Python project 
+# PROJECT_ID = get_project_id('javascript') # JS project
+# PROJECT_ID = get_project_id('java') # Java project
+PROJECT_ID = get_project_id('go') # Go project
 
 
-LT_TOKEN = "YOUR_LT_TOKEN"
+from config_utils import get_lt_token
+LT_TOKEN = get_lt_token()
 
 # --- API URLS ---
 BASE_BATCHES_URL = f"https://eval.turing.com/api/batches?sort%5B0%5D=createdAt%2CDESC&join%5B0%5D=batchStats&join%5B1%5D=importAttempts&filter%5B0%5D=projectId%7C%7C%24eq%7C%7C{PROJECT_ID}"

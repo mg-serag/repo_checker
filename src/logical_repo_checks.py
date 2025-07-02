@@ -18,106 +18,29 @@ import concurrent.futures
 # --- Script Configuration ---
 CREDS_JSON_PATH = os.path.join(os.path.dirname(__file__), 'creds.json')
 SCOPE = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-SPREADSHEET_KEY = '1XMbstebCi1xFSwJ7cTN-DXv4jFmdH2owWBE3R7YsXK0'
+from config_utils import get_spreadsheet_key
+SPREADSHEET_KEY = get_spreadsheet_key()
 
 # --- Language Configuration ---
 # Set the target language for evaluation
 TARGET_LANGUAGE = 'Java'  # Options: 'Java', 'JavaScript', 'Python', 'Go', 'C/C++', 'Rust'
 
 # Language-specific configurations
-LANGUAGE_CONFIG = {
-    'Java': {
-        'sheet_name': 'Java',
-        'target_language': 'Java',
-        'min_percentage': 70,
-        'min_stars': 400,
-        'project_id': 42,  # Java project ID in labeling tool
-        'loc_thresholds': {
-            400: 150000,   # 400 stars -> 150k LOC
-            450: 120000,   # 450 stars -> 120k LOC
-            500: 100000,   # 500 stars -> 100k LOC
-            800: 75000,    # 800 stars -> 75k LOC
-            1500: 60000,   # 1500 stars -> 60k LOC
-        }
-    },
-    'JavaScript': {
-        'sheet_name': 'JS/TS',
-        'target_language': 'JavaScript',
-        'min_percentage': 70,
-        'min_stars': 400,
-        'project_id': 41,  # JS project ID in labeling tool
-        'loc_thresholds': {
-            400: 150000,
-            450: 120000,
-            500: 100000,
-            800: 75000,
-            1500: 60000,
-        }
-    },
-    'Python': {
-        'sheet_name': 'Python',
-        'target_language': 'Python',
-        'min_percentage': 70,
-        'min_stars': 400,
-        'project_id': 40,  # Python project ID in labeling tool
-        'loc_thresholds': {
-            400: 150000,
-            450: 120000,
-            500: 100000,
-            800: 75000,
-            1500: 60000,
-        }
-    },
-    'Go': {
-        'sheet_name': 'Go',
-        'target_language': 'Go',
-        'min_percentage': 70,
-        'min_stars': 400,
-        'project_id': 43,  # Go project ID in labeling tool
-        'loc_thresholds': {
-            400: 150000,
-            450: 120000,
-            500: 100000,
-            800: 75000,
-            1500: 60000,
-        }
-    },
-    'C/C++': {
-        'sheet_name': 'C/C++',
-        'target_language': 'C',  # GitHub API returns 'C' for C/C++ repos
-        'min_percentage': 70,
-        'min_stars': 400,
-        'project_id': 44,  # C/C++ project ID in labeling tool (placeholder)
-        'loc_thresholds': {
-            400: 150000,
-            450: 120000,
-            500: 100000,
-            800: 75000,
-            1500: 60000,
-        }
-    },
-    'Rust': {
-        'sheet_name': 'Rust',
-        'target_language': 'Rust',
-        'min_percentage': 70,
-        'min_stars': 400,
-        'project_id': 45,  # Rust project ID in labeling tool (placeholder)
-        'loc_thresholds': {
-            400: 150000,
-            450: 120000,
-            500: 100000,
-            800: 75000,
-            1500: 60000,
-        }
-    }
-}
+from config_utils import (
+    get_language_config, get_language_sheet_name, get_language_evaluation_config,
+    get_language_target_language, get_project_id
+)
 
 # Get current language configuration
-LANG_CONFIG = LANGUAGE_CONFIG.get(TARGET_LANGUAGE, LANGUAGE_CONFIG['JavaScript'])
-SHEET_NAME = LANG_CONFIG['sheet_name']
+LANG_CONFIG = get_language_config(TARGET_LANGUAGE)
+SHEET_NAME = get_language_sheet_name(TARGET_LANGUAGE)
+
+# Add project_id to the language config for backward compatibility
+LANG_CONFIG['project_id'] = get_project_id(TARGET_LANGUAGE.lower())
 
 # --- Labeling Tool Configuration ---
-LT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Im1vaGFtYWQuc0B0dXJpbmcuY29tIiwic3ViIjoxMTYsImlhdCI6MTc1MDc0NzY0MywiZXhwIjoxNzUxMzUyNDQzfQ.De_PSAqQl306vqf7BEFIYbjo66zehS8coPtUEfZhk8w"
+from config_utils import get_lt_token, get_project_id
+LT_TOKEN = get_lt_token()
 
 # --- Column Configuration ---
 # Define expected column headers and their default indices (0-based)
@@ -704,6 +627,21 @@ def get_required_loc_for_stars(stars, loc_thresholds):
     # If stars are below the minimum threshold, return the highest required LOC
     return max(loc_thresholds.values())
 
+def get_language_evaluation_settings(language_name: str):
+    """
+    Get evaluation settings for a specific language.
+    """
+    from config_utils import get_language_evaluation_config, get_loc_thresholds
+    
+    eval_config = get_language_evaluation_config(language_name)
+    loc_thresholds = get_loc_thresholds(language_name)
+    
+    return {
+        'min_percentage': eval_config['min_percentage'],
+        'min_stars': eval_config['min_stars'],
+        'loc_thresholds': loc_thresholds
+    }
+
 def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, row_number=None):
     """
     Evaluates a single repository based on a set of criteria.
@@ -766,8 +704,12 @@ def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, ro
     language_percentages = {lang: (bytes / total_bytes) * 100 for lang, bytes in languages_data.items()}
     primary_lang_name, primary_lang_percent = max(language_percentages.items(), key=lambda x: x[1])
     
+    # Get evaluation settings for the target language
+    eval_settings = get_language_evaluation_settings(TARGET_LANGUAGE)
+    target_language = get_language_target_language(TARGET_LANGUAGE)
+    
     # Check if the primary language matches our target language
-    target_lang_percent = language_percentages.get(LANG_CONFIG['target_language'], 0)
+    target_lang_percent = language_percentages.get(target_language, 0)
     
     results.update({
         'language_name': primary_lang_name,
@@ -781,7 +723,7 @@ def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, ro
     # 6. Conditional LOC Check
     # Only run LOC check if language and stars checks have passed
     lines = None
-    if target_lang_percent >= LANG_CONFIG['min_percentage'] and stars >= LANG_CONFIG['min_stars']:
+    if target_lang_percent >= eval_settings['min_percentage'] and stars >= eval_settings['min_stars']:
         print(f"[LOC Check] Running LOC check for {user_repo}{row_info} (Language: {target_lang_percent:.2f}%, Stars: {stars})")
         lines = get_lines_count(user_repo)
         
@@ -794,30 +736,30 @@ def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, ro
             loc_check_passed = False
         else:
             results['loc_count'] = lines
-            required_loc = get_required_loc_for_stars(stars, LANG_CONFIG['loc_thresholds'])
+            required_loc = get_required_loc_for_stars(stars, eval_settings['loc_thresholds'])
             if lines >= required_loc:
                 loc_check_passed = True
             else:
                 loc_check_passed = False
     else:
         loc_check_passed = False
-        if target_lang_percent < LANG_CONFIG['min_percentage']:
-            print(f"[LOC Check] Skipping LOC check for {user_repo}{row_info} (Language: {target_lang_percent:.2f}% < {LANG_CONFIG['min_percentage']}%)")
-        if stars < LANG_CONFIG['min_stars']:
-            print(f"[LOC Check] Skipping LOC check for {user_repo}{row_info} (Stars: {stars} < {LANG_CONFIG['min_stars']})")
+        if target_lang_percent < eval_settings['min_percentage']:
+            print(f"[LOC Check] Skipping LOC check for {user_repo}{row_info} (Language: {target_lang_percent:.2f}% < {eval_settings['min_percentage']}%)")
+        if stars < eval_settings['min_stars']:
+            print(f"[LOC Check] Skipping LOC check for {user_repo}{row_info} (Stars: {stars} < {eval_settings['min_stars']})")
 
     # Manual review determination: other checks pass but LOC had an error
     if (results['already_exists'] == "No" and
-        target_lang_percent >= LANG_CONFIG['min_percentage'] and
-        stars >= LANG_CONFIG['min_stars'] and
+        target_lang_percent >= eval_settings['min_percentage'] and
+        stars >= eval_settings['min_stars'] and
         str(results['loc_count']).upper().startswith("ERROR")):
         results['manual_review'] = True
 
     # Final verdict
     checks_passed = [
         results['already_exists'] == "No",
-        target_lang_percent >= LANG_CONFIG['min_percentage'],
-        stars >= LANG_CONFIG['min_stars'],
+        target_lang_percent >= eval_settings['min_percentage'],
+        stars >= eval_settings['min_stars'],
         loc_check_passed
     ]
     results['should_add'] = all(checks_passed)
@@ -827,12 +769,12 @@ def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, ro
     elif not results['should_add']:
         reasons = []
         if results['already_exists'] == "Yes": reasons.append("Exists in Labeling Tool/Sheet")
-        if target_lang_percent < LANG_CONFIG['min_percentage']: 
-            reasons.append(f"{LANG_CONFIG['target_language']} < {target_lang_percent:.2f}%")
-        if stars < LANG_CONFIG['min_stars']: 
+        if target_lang_percent < eval_settings['min_percentage']: 
+            reasons.append(f"{target_language} < {target_lang_percent:.2f}%")
+        if stars < eval_settings['min_stars']: 
             reasons.append(f"Stars < {stars}")
         if not loc_check_passed and lines is not None:
-            required_loc = get_required_loc_for_stars(stars, LANG_CONFIG['loc_thresholds'])
+            required_loc = get_required_loc_for_stars(stars, eval_settings['loc_thresholds'])
             reasons.append(f"LOC < {required_loc:,}")
         results['reason'] = ", ".join(reasons)
     else:
@@ -955,18 +897,24 @@ def print_column_configuration():
     """
     Prints the current column configuration for easy reference.
     """
+    from config_utils import get_language_evaluation_config, get_loc_thresholds, get_language_target_language
+    
+    eval_config = get_language_evaluation_config(TARGET_LANGUAGE)
+    loc_thresholds = get_loc_thresholds(TARGET_LANGUAGE)
+    target_language = get_language_target_language(TARGET_LANGUAGE)
+    
     print("=" * 80)
     print("COLUMN CONFIGURATION")
     print("=" * 80)
     print(f"Sheet: {SPREADSHEET_KEY}")
     print(f"Tab: {SHEET_NAME}")
-    print(f"Target Language: {LANG_CONFIG['target_language']}")
-    print(f"Min Stars: {LANG_CONFIG['min_stars']}")
-    print(f"Min Language Percentage: {LANG_CONFIG['min_percentage']}%")
+    print(f"Target Language: {target_language}")
+    print(f"Min Stars: {eval_config['min_stars']}")
+    print(f"Min Language Percentage: {eval_config['min_percentage']}%")
     print(f"Labeling Tool Project ID: {LANG_CONFIG['project_id']}")
     print("-" * 80)
     print("LOC Thresholds:")
-    for stars, loc in sorted(LANG_CONFIG['loc_thresholds'].items()):
+    for stars, loc in sorted(loc_thresholds.items()):
         print(f"  {stars} stars -> {loc:,} LOC")
     print("-" * 80)
     print(f"{'Column Key':<18} {'Excel':<8} {'Expected Headers':<25} {'Description'}")

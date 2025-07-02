@@ -15,29 +15,33 @@ from datetime import datetime
 # --- Script Configuration ---
 CREDS_JSON_PATH = os.path.join(os.path.dirname(__file__), 'creds.json')
 SCOPE = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-SPREADSHEET_KEY = '1XMbstebCi1xFSwJ7cTN-DXv4jFmdH2owWBE3R7YsXK0'
+from config_utils import get_spreadsheet_key
+SPREADSHEET_KEY = get_spreadsheet_key()
 
 # --- Labeling Tool Configuration ---
-LT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Im1vaGFtYWQuc0B0dXJpbmcuY29tIiwic3ViIjoxMTYsImlhdCI6MTc1MTM1NDgzNiwiZXhwIjoxNzUxOTU5NjM2fQ.ZRwwwAuE8TyZ_NWhEczZoj6j-uujcLzYaHG68VHH7ow"
+from config_utils import get_lt_token
+LT_TOKEN = get_lt_token()
 
 # --- Sheet Configuration ---
 # Configure which sheets to update and their corresponding project IDs
+from config_utils import get_project_id
+
 SHEETS_TO_UPDATE = {
     'JS/TS': {
-        'project_id': 41,  # JavaScript project ID in labeling tool
+        'project_id': get_project_id('javascript'),  # JavaScript project ID in labeling tool
         'description': 'JavaScript/TypeScript repositories'
     },
     'Java': {
-        'project_id': 42,  # Java project ID in labeling tool
+        'project_id': get_project_id('java'),  # Java project ID in labeling tool
         'description': 'Java repositories'
     }
     # Add more sheets here as needed:
     # 'Python': {
-    #     'project_id': 40,
+    #     'project_id': get_project_id('python'),
     #     'description': 'Python repositories'
     # },
     # 'Go': {
-    #     'project_id': 43,
+    #     'project_id': get_project_id('go'),
     #     'description': 'Go repositories'
     # }
 }

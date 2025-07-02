@@ -1,0 +1,233 @@
+{
+  "languages": {
+    "Java": {
+      "display_name": "Java",
+      "sheet_name": "Java",
+      "target_language": "Java",
+      "github_language": "Java",
+      "evaluation": {
+        "min_percentage": 70,
+        "min_stars": 400,
+        "loc_thresholds": {
+          "400": 150000,
+          "450": 120000,
+          "500": 100000,
+          "800": 75000,
+          "1500": 60000
+        }
+      },
+      "file_analysis": {
+        "source_extensions": [".java"],
+        "dependency_files": [
+          "pom.xml",
+          "build.gradle",
+          "build.gradle.kts",
+          "settings.gradle",
+          "settings.gradle.kts",
+          "gradlew",
+          "gradlew.bat",
+          "mvnw",
+          "mvnw.cmd"
+        ],
+        "test_patterns": ["test.java"]
+      }
+    },
+    "JavaScript": {
+      "display_name": "JavaScript",
+      "sheet_name": "JS/TS",
+      "target_language": "JavaScript",
+      "github_language": "JavaScript",
+      "evaluation": {
+        "min_percentage": 70,
+        "min_stars": 400,
+        "loc_thresholds": {
+          "400": 150000,
+          "450": 120000,
+          "500": 100000,
+          "800": 75000,
+          "1500": 60000
+        }
+      },
+      "file_analysis": {
+        "source_extensions": [".js", ".jsx", ".ts", ".tsx"],
+        "dependency_files": [
+          "package.json",
+          "yarn.lock",
+          "pnpm-lock.yaml",
+          "package-lock.json",
+          "webpack.config.js",
+          "rollup.config.js",
+          "vite.config.js",
+          "babel.config.js",
+          ".eslintrc.js",
+          ".prettierrc.js"
+        ],
+        "test_patterns": [".test.js", ".test.jsx", ".test.ts", ".test.tsx", ".spec.js", ".spec.jsx", ".spec.ts", ".spec.tsx"]
+      }
+    },
+    "TypeScript": {
+      "display_name": "TypeScript",
+      "sheet_name": "JS/TS",
+      "target_language": "TypeScript",
+      "github_language": "TypeScript",
+      "evaluation": {
+        "min_percentage": 70,
+        "min_stars": 400,
+        "loc_thresholds": {
+          "400": 150000,
+          "450": 120000,
+          "500": 100000,
+          "800": 75000,
+          "1500": 60000
+        }
+      },
+      "file_analysis": {
+        "source_extensions": [".ts", ".tsx"],
+        "dependency_files": [
+          "package.json",
+          "yarn.lock",
+          "pnpm-lock.yaml",
+          "package-lock.json",
+          "tsconfig.json",
+          "tsconfig.build.json",
+          "webpack.config.js",
+          "rollup.config.js",
+          "vite.config.ts",
+          "babel.config.js",
+          ".eslintrc.js",
+          ".prettierrc.js"
+        ],
+        "test_patterns": [".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"]
+      }
+    },
+    "Python": {
+      "display_name": "Python",
+      "sheet_name": "Python",
+      "target_language": "Python",
+      "github_language": "Python",
+      "evaluation": {
+        "min_percentage": 70,
+        "min_stars": 400,
+        "loc_thresholds": {
+          "400": 150000,
+          "450": 120000,
+          "500": 100000,
+          "800": 75000,
+          "1500": 60000
+        }
+      },
+      "file_analysis": {
+        "source_extensions": [".py"],
+        "dependency_files": [
+          "requirements.txt",
+          "pyproject.toml",
+          "setup.py",
+          "Pipfile",
+          "Pipfile.lock",
+          "poetry.lock",
+          "tox.ini",
+          "pytest.ini"
+        ],
+        "test_patterns": ["test_", "_test.py"]
+      }
+    },
+    "Go": {
+      "display_name": "Go",
+      "sheet_name": "Go",
+      "target_language": "Go",
+      "github_language": "Go",
+      "evaluation": {
+        "min_percentage": 70,
+        "min_stars": 400,
+        "loc_thresholds": {
+          "400": 150000,
+          "450": 120000,
+          "500": 100000,
+          "800": 75000,
+          "1500": 60000
+        }
+      },
+      "file_analysis": {
+        "source_extensions": [".go"],
+        "dependency_files": [
+          "go.mod",
+          "go.sum",
+          "Gopkg.toml",
+          "Gopkg.lock"
+        ],
+        "test_patterns": ["_test.go"]
+      }
+    },
+    "C/C++": {
+      "display_name": "C/C++",
+      "sheet_name": "C/C++",
+      "target_language": "C",
+      "github_language": "C",
+      "evaluation": {
+        "min_percentage": 70,
+        "min_stars": 400,
+        "loc_thresholds": {
+          "400": 150000,
+          "450": 120000,
+          "500": 100000,
+          "800": 75000,
+          "1500": 60000
+        }
+      },
+      "file_analysis": {
+        "source_extensions": [".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hh", ".hxx"],
+        "dependency_files": [
+          "CMakeLists.txt",
+          "Makefile",
+          "configure",
+          "configure.ac",
+          "autogen.sh",
+          "bootstrap",
+          "build.sh",
+          "setup.py",
+          "package.json",
+          "Cargo.toml",
+          "meson.build",
+          "SConstruct"
+        ],
+        "test_patterns": [".test.c", ".test.cpp", ".test.cc", ".test.cxx", "_test.c", "_test.cpp", "_test.cc", "_test.cxx"]
+      }
+    },
+    "Rust": {
+      "display_name": "Rust",
+      "sheet_name": "Rust",
+      "target_language": "Rust",
+      "github_language": "Rust",
+      "evaluation": {
+        "min_percentage": 70,
+        "min_stars": 400,
+        "loc_thresholds": {
+          "400": 150000,
+          "450": 120000,
+          "500": 100000,
+          "800": 75000,
+          "1500": 60000
+        }
+      },
+      "file_analysis": {
+        "source_extensions": [".rs"],
+        "dependency_files": [
+          "Cargo.toml",
+          "Cargo.lock",
+          "rust-toolchain.toml"
+        ],
+        "test_patterns": ["_test.rs"]
+      }
+    }
+  },
+  "global_settings": {
+    "non_code_extensions": [
+      ".md", ".markdown", ".txt", ".json", ".yml", ".yaml", ".xml", ".toml", ".ini", ".cfg", ".lock",
+      ".html", ".htm", ".css", ".scss", ".sass", ".less", ".svg", ".png", ".jpg", ".jpeg", ".gif",
+      ".ico", ".woff", ".woff2", ".ttf", ".eot", ".csv", ".tsv", ".log", ".sql", ".sh", ".bat",
+      ".ps1", ".dockerfile", ".gitignore", ".gitattributes", ".editorconfig", ".browserslistrc"
+    ],
+    "universal_test_extensions": [".snap", ".spec"],
+    "test_directories": ["/test/", "/tests/", "/spec/"]
+  }
+} 
