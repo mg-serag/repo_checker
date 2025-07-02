@@ -18,7 +18,7 @@ SCOPE = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis
 SPREADSHEET_KEY = '1XMbstebCi1xFSwJ7cTN-DXv4jFmdH2owWBE3R7YsXK0'
 
 # --- Labeling Tool Configuration ---
-LT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Im1vaGFtYWQuc0B0dXJpbmcuY29tIiwic3ViIjoxMTYsImlhdCI6MTc1MDc0NzY0MywiZXhwIjoxNzUxMzUyNDQzfQ.De_PSAqQl306vqf7BEFIYbjo66zehS8coPtUEfZhk8w"
+LT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6Im1vaGFtYWQuc0B0dXJpbmcuY29tIiwic3ViIjoxMTYsImlhdCI6MTc1MTM1NDgzNiwiZXhwIjoxNzUxOTU5NjM2fQ.ZRwwwAuE8TyZ_NWhEczZoj6j-uujcLzYaHG68VHH7ow"
 
 # --- Sheet Configuration ---
 # Configure which sheets to update and their corresponding project IDs

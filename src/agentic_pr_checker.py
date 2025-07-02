@@ -20,7 +20,7 @@ from termcolor import colored
 # load_dotenv()
 
 # --- Language Configuration ---
-TARGET_LANGUAGE = "JavaScript"  # Set target language directly
+TARGET_LANGUAGE = "C/C++"  # Set target language directly
 
 # --- Script Behavior ---
 DEBUG_MODE = False
@@ -92,25 +92,32 @@ LANGUAGE_CONFIG = {
         'dependency_files': {
             'go.mod', 'go.sum', 'Gopkg.toml', 'Gopkg.lock'
         },
+    },
+    'C/C++': {
+        'sheet_name': 'C/C++',
+        'target_language': 'C',  # GitHub API returns 'C' for C/C++ repos
+        'source_ext': {'.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.hh', '.hxx'},
+        'dependency_files': {
+            'CMakeLists.txt', 'Makefile', 'configure', 'configure.ac',
+            'autogen.sh', 'bootstrap', 'build.sh', 'setup.py',
+            'package.json', 'Cargo.toml', 'meson.build', 'SConstruct'
+        },
+    },
+    'Rust': {
+        'sheet_name': 'Rust',
+        'target_language': 'Rust',
+        'source_ext': {'.rs'},
+        'dependency_files': {
+            'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'
+        },
     }
 }
 
-# Load token from env or config
+# Load token from environment variable
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 if not GITHUB_TOKEN:
-    CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
-    if os.path.exists(CONFIG_PATH):
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as cfg:
-                data = json.load(cfg)
-            token_str = data.get("GITHUB_TOKENS", "").strip()
-            # Use the first token in the list if present
-            if token_str:
-                GITHUB_TOKEN = token_str.split()[0]
-        except (UnicodeDecodeError, json.JSONDecodeError, IOError) as e:
-            print(f"⚠️ Warning: Could not read config.json file: {e}")
-            print("   Please ensure the file is UTF-8 encoded and contains valid JSON.")
-            GITHUB_TOKEN = None
+    print("❌ Error: GITHUB_TOKEN environment variable not set. The script cannot run without it.")
+    sys.exit(1)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 CREDS_JSON_PATH = os.path.join(os.path.dirname(__file__), 'creds.json')
@@ -199,6 +206,10 @@ def _is_test_file(filepath: str, lang_name: str) -> bool:
         return True
     if lang_name == "Go" and base.endswith("_test.go"):
         return True
+    if lang_name == "C/C++" and any(base.endswith(suffix) for suffix in ['.test.c', '.test.cpp', '.test.cc', '.test.cxx', '_test.c', '_test.cpp', '_test.cc', '_test.cxx']):
+        return True
+    if lang_name == "Rust" and base.endswith("_test.rs"):
+        return True
     
     return False
 
@@ -242,7 +253,9 @@ def get_language_output_dir():
         'JavaScript': 'JavaScript_pr_reports', 
         'TypeScript': 'TypeScript_pr_reports',
         'Python': 'Python_pr_reports',
-        'Go': 'Go_pr_reports'
+        'Go': 'Go_pr_reports',
+        'C/C++': 'C_Cpp_pr_reports',
+        'Rust': 'Rust_pr_reports'
     }
     
     # Get the folder name for current language, default to 'Unknown_pr_reports'

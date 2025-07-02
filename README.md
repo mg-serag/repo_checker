@@ -88,12 +88,16 @@ The script uses intelligent update rules based on the current "Added" column sta
 
 The script checks against these labeling tool projects:
 
-| Language | Project ID | Purpose |
-|----------|------------|---------|
-| Python | 40 | Python repositories |
-| JavaScript | 41 | JavaScript repositories |
-| Java | 42 | Java repositories |
-| Go | 43 | Go repositories |
+| Language | Project ID | Purpose | Status |
+|----------|------------|---------|---------|
+| Python | 40 | Python repositories | Active |
+| JavaScript | 41 | JavaScript repositories | Active |
+| Java | 42 | Java repositories | Active |
+| Go | 43 | Go repositories | Active |
+| C/C++ | 44 | C/C++ repositories | Placeholder |
+| Rust | 45 | Rust repositories | Placeholder |
+
+**Note**: C/C++ and Rust projects (IDs 44, 45) are currently placeholders. The script will skip labeling tool checks for these languages until the projects are created in the labeling tool.
 
 #### Repository Name Conversion
 
@@ -200,6 +204,8 @@ The script supports multiple languages with specific configurations:
 | TypeScript | JS/TS | `.ts`, `.tsx` | `package.json`, `tsconfig.json`, etc. |
 | Python | Python | `.py` | `requirements.txt`, `pyproject.toml`, etc. |
 | Go | Go | `.go` | `go.mod`, `go.sum`, etc. |
+| C/C++ | C/C++ | `.c`, `.cpp`, `.cc`, `.cxx`, `.h`, `.hpp`, `.hh`, `.hxx` | `CMakeLists.txt`, `Makefile`, `configure`, etc. |
+| Rust | Rust | `.rs` | `Cargo.toml`, `Cargo.lock`, etc. |
 
 #### Additional Settings
 
@@ -424,25 +430,26 @@ To change the target language, modify the `TARGET_LANGUAGE` variable in the resp
 
 ```python
 # In logical_repo_checks.py
-TARGET_LANGUAGE = "Python"  # Options: 'Java', 'JavaScript', 'Python', 'Go'
+TARGET_LANGUAGE = "Python"  # Options: 'Java', 'JavaScript', 'Python', 'Go', 'C/C++', 'Rust'
 
 # In agentic_pr_checker.py  
-TARGET_LANGUAGE = "Python"  # Options: 'Java', 'JavaScript', 'TypeScript', 'Python', 'Go'
+TARGET_LANGUAGE = "Python"  # Options: 'Java', 'JavaScript', 'TypeScript', 'Python', 'Go', 'C/C++', 'Rust'
 ```
 
 ### API Configuration
 
-**GitHub Tokens** (`src/config.json`):
-```json
-{
-  "GITHUB_TOKENS": "ghp_xxxxxxxxx ghp_yyyyyyyy"
-}
+**GitHub Token** (Environment Variable):
+```bash
+export GITHUB_TOKEN="ghp_xxxxxxxxx"
 ```
 
 **OpenAI API Key** (Environment Variable):
 ```bash
 export OPENAI_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
 ```
+
+**Google Sheets Credentials**:
+- `src/creds.json` - Google Sheets service account credentials
 
 ## 📈 Monitoring and Results
 

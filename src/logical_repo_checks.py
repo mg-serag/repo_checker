@@ -22,7 +22,7 @@ SPREADSHEET_KEY = '1XMbstebCi1xFSwJ7cTN-DXv4jFmdH2owWBE3R7YsXK0'
 
 # --- Language Configuration ---
 # Set the target language for evaluation
-TARGET_LANGUAGE = 'Java'  # Options: 'Java', 'JavaScript', 'Python', 'Go'
+TARGET_LANGUAGE = 'Java'  # Options: 'Java', 'JavaScript', 'Python', 'Go', 'C/C++', 'Rust'
 
 # Language-specific configurations
 LANGUAGE_CONFIG = {
@@ -74,6 +74,34 @@ LANGUAGE_CONFIG = {
         'min_percentage': 70,
         'min_stars': 400,
         'project_id': 43,  # Go project ID in labeling tool
+        'loc_thresholds': {
+            400: 150000,
+            450: 120000,
+            500: 100000,
+            800: 75000,
+            1500: 60000,
+        }
+    },
+    'C/C++': {
+        'sheet_name': 'C/C++',
+        'target_language': 'C',  # GitHub API returns 'C' for C/C++ repos
+        'min_percentage': 70,
+        'min_stars': 400,
+        'project_id': 44,  # C/C++ project ID in labeling tool (placeholder)
+        'loc_thresholds': {
+            400: 150000,
+            450: 120000,
+            500: 100000,
+            800: 75000,
+            1500: 60000,
+        }
+    },
+    'Rust': {
+        'sheet_name': 'Rust',
+        'target_language': 'Rust',
+        'min_percentage': 70,
+        'min_stars': 400,
+        'project_id': 45,  # Rust project ID in labeling tool (placeholder)
         'loc_thresholds': {
             400: 150000,
             450: 120000,
@@ -162,77 +190,38 @@ COLUMN_CONFIG = {
     }
 }
 
-# --- Config & Token Management ---
-
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
-
-def load_token_string():
-    if not os.path.exists(CONFIG_PATH):
-        raise FileNotFoundError(f"Config file not found at {CONFIG_PATH}. Please create it with your GitHub tokens.")
-    with open(CONFIG_PATH, "r", encoding="utf-8") as cfg:
-        data = json.load(cfg)
-    token_str = data.get("GITHUB_TOKENS", "").strip()
-    if not token_str:
-        raise ValueError("'GITHUB_TOKENS' is missing or empty in config.json")
-    return token_str
-
-# --- Token Management & API Request Handling ---
-
-class TokenManager:
-    """A class to manage and rotate a list of API tokens."""
-    def __init__(self, tokens_str):
-        if not tokens_str or not tokens_str.strip():
-            raise ValueError("Token string cannot be empty.")
-        self.tokens = tokens_str.split()
-        self.current_index = 0
-
-    def get_next_token(self):
-        """Gets the current token and rotates the index to the next one."""
-        token = self.tokens[self.current_index]
-        self.current_index = (self.current_index + 1) % len(self.tokens)
-        return token
-
-    def get_current_index(self):
-        """Returns the current index, for checking if we've looped through all tokens."""
-        return self.current_index
-
-# Initialize the token manager with your tokens
-TOKEN_STRING = load_token_string()
-token_manager = TokenManager(TOKEN_STRING)
-
+# --- GitHub API Request Handling ---
 
 def make_github_api_request(url):
     """
-    Makes a resilient request to the GitHub API, handling token rotation and rate limiting.
+    Makes a request to the GitHub API using the GITHUB_TOKEN environment variable.
     """
-    start_index = token_manager.get_current_index()
-    while True:
-        token = token_manager.get_next_token()
-        headers = {"Accept": "application/vnd.github.v3+json", "Authorization": f"token {token}"}
-        
-        try:
+    github_token = os.getenv('GITHUB_TOKEN')
+    if not github_token:
+        raise ValueError("GITHUB_TOKEN environment variable not set.")
+    
+    headers = {"Accept": "application/vnd.github.v3+json", "Authorization": f"token {github_token}"}
+    
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        return response
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 403 and 'rate limit exceeded' in e.response.text.lower():
+            print(colored(f"Rate limit exceeded for GitHub API. Please wait and try again.", "red"))
+            # Get reset time from headers if available
+            reset_time_utc = int(e.response.headers.get('X-RateLimit-Reset', time.time() + 3600))
+            wait_time = max(reset_time_utc - time.time(), 0) + 5  # Add a 5-second buffer
+            print(colored(f"Waiting for {int(wait_time)} seconds until reset...", "red"))
+            time.sleep(wait_time)
+            # Retry once after waiting
             response = requests.get(url, headers=headers)
-            # Raise an exception for bad status codes (4xx or 5xx), which we handle below
             response.raise_for_status()
             return response
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 403 and 'rate limit exceeded' in e.response.text.lower():
-                print(colored(f"Rate limit exceeded for token ending in ...{token[-4:]}.", "magenta"))
-                
-                # Check if we have tried all available tokens
-                if token_manager.get_current_index() == start_index:
-                    # We have cycled through all tokens and they are all limited. Time to wait.
-                    reset_time_utc = int(e.response.headers.get('X-RateLimit-Reset', time.time() + 3600))
-                    wait_time = max(reset_time_utc - time.time(), 0) + 5  # Add a 5-second buffer
-                    print(colored(f"All tokens are rate-limited. Waiting for {int(wait_time)} seconds until reset...", "red"))
-                    time.sleep(wait_time)
-                
-                # Continue to the next iteration to try the next token
-                continue
-            else:
-                # It's a different HTTP error (e.g., 404 Not Found), so we should stop and report it.
-                print(colored(f"An unexpected HTTP error occurred: {e}", "red"))
-                raise e
+        else:
+            # It's a different HTTP error (e.g., 404 Not Found), so we should stop and report it.
+            print(colored(f"An unexpected HTTP error occurred: {e}", "red"))
+            raise e
 
 # --- Labeling Tool API Functions ---
 
@@ -242,6 +231,12 @@ def fetch_existing_repos_from_lt():
     Returns a list of repository names that already exist in the labeling tool.
     """
     project_id = LANG_CONFIG['project_id']
+    
+    # Check if project ID is a placeholder (non-existent)
+    if project_id in [44, 45]:  # Placeholder IDs for C/C++ and Rust
+        print(colored(f"\n[Labeling Tool] Project ID {project_id} is a placeholder. Skipping labeling tool checks for {TARGET_LANGUAGE}.", "yellow"))
+        return set()
+    
     base_url = f"https://eval.turing.com/api/batches?sort%5B0%5D=createdAt%2CDESC&join%5B0%5D=batchStats&join%5B1%5D=importAttempts&filter%5B0%5D=projectId%7C%7C%24eq%7C%7C{project_id}"
     headers = {"Authorization": f"Bearer {LT_TOKEN}"}
     all_batches = []
@@ -285,6 +280,12 @@ def fetch_all_batches_from_lt():
     Returns a dictionary mapping USER__REPO to batch data.
     """
     project_id = LANG_CONFIG['project_id']
+    
+    # Check if project ID is a placeholder (non-existent)
+    if project_id in [44, 45]:  # Placeholder IDs for C/C++ and Rust
+        print(colored(f"\n[Labeling Tool] Project ID {project_id} is a placeholder. Skipping labeling tool data fetch for {TARGET_LANGUAGE}.", "yellow"))
+        return {}
+    
     base_url = f"https://eval.turing.com/api/batches?sort%5B0%5D=createdAt%2CDESC&join%5B0%5D=batchStats&join%5B1%5D=importAttempts&filter%5B0%5D=projectId%7C%7C%24eq%7C%7C{project_id}"
     headers = {"Authorization": f"Bearer {LT_TOKEN}"}
     all_batches = []
