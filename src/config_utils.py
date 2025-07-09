@@ -75,6 +75,32 @@ def get_spreadsheet_key() -> str:
     config = load_config()
     return config['spreadsheet_key']
 
+def get_gspread_client() -> "gspread.client.Client":
+    """
+    Get the gspread client using service account credentials.
+    """
+    import gspread
+
+    config = load_config()
+    credentials_path = config.get('google_credentials_path', 'creds.json')
+    
+    config_dir = os.path.dirname(CONFIG_FILE_PATH)
+    abs_credentials_path = os.path.join(config_dir, credentials_path)
+
+    if not os.path.exists(abs_credentials_path):
+        raise FileNotFoundError(f"Google credentials file not found at {abs_credentials_path}")
+
+    return gspread.service_account(filename=abs_credentials_path)
+
+
+def get_google_sheet(client: "gspread.client.Client") -> "gspread.Spreadsheet":
+    """
+    Get the Google Sheet object using the spreadsheet key from config.
+    """
+    import gspread
+    spreadsheet_key = get_spreadsheet_key()
+    return client.open_by_key(spreadsheet_key)
+
 def get_project_id(language: str) -> int:
     """
     Get the project ID for a specific language from configuration.
@@ -135,10 +161,9 @@ def get_language_config(language_name: str) -> Dict[str, Any]:
         KeyError: If language not found in configuration
     """
     configs = load_language_configs()
-    language_key = language_name.replace('/', '').replace('+', '')  # Handle 'C/C++' -> 'C/C++'
-    return configs['languages'][language_key]
+    return configs['languages'][language_name]
 
-def get_all_languages() -> Dict[str, Any]:
+def get_all_language_configs() -> Dict[str, Any]:
     """
     Get all available language configurations.
     
@@ -276,6 +301,26 @@ def get_loc_thresholds(language_name: str) -> Dict[int, int]:
     # Convert string keys to integers
     return {int(k): v for k, v in eval_config['loc_thresholds'].items()}
 
+def get_language_evaluation_settings(language_name: str) -> Dict[str, Any]:
+    """
+    Get complete evaluation settings for a specific language.
+    This combines evaluation config and LOC thresholds.
+    
+    Args:
+        language_name: Name of the language
+        
+    Returns:
+        Dictionary containing complete evaluation settings
+    """
+    eval_config = get_language_evaluation_config(language_name)
+    loc_thresholds = get_loc_thresholds(language_name)
+    
+    return {
+        'min_percentage': eval_config['min_percentage'],
+        'min_stars': eval_config['min_stars'],
+        'loc_thresholds': loc_thresholds
+    }
+
 def get_non_code_extensions() -> set:
     """
     Get global non-code file extensions.
@@ -295,6 +340,45 @@ def get_universal_test_extensions() -> set:
     """
     global_settings = get_global_settings()
     return set(global_settings['universal_test_extensions'])
+
+def get_language_project_id(language_name: str) -> int:
+    """
+    Get the Labeling Tool project ID for a specific language.
+    
+    Args:
+        language_name: Name of the language
+        
+    Returns:
+        Project ID integer
+    """
+    lang_config = get_language_config(language_name)
+    return lang_config['file_analysis']['project_id']
+
+def get_language_json_folder(language_name: str) -> str:
+    """
+    Get the JSON folder path for a specific language.
+    
+    Args:
+        language_name: Name of the language
+        
+    Returns:
+        JSON folder path string
+    """
+    lang_config = get_language_config(language_name)
+    return lang_config['file_analysis']['json_folder']
+
+def get_language_csv_folder(language_name: str) -> str:
+    """
+    Get the CSV folder path for a specific language.
+    
+    Args:
+        language_name: Name of the language
+        
+    Returns:
+        CSV folder path string
+    """
+    lang_config = get_language_config(language_name)
+    return lang_config['file_analysis']['csv_folder']
 
 def get_test_directories() -> list:
     """

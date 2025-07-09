@@ -18,6 +18,9 @@
       },
       "file_analysis": {
         "source_extensions": [".java"],
+        "project_id": 42,
+        "json_folder": "Java_json",
+        "csv_folder": "Java_csv",
         "dependency_files": [
           "pom.xml",
           "build.gradle",
@@ -50,6 +53,9 @@
       },
       "file_analysis": {
         "source_extensions": [".js", ".jsx", ".ts", ".tsx"],
+        "project_id": 41,
+        "json_folder": "JavaScript_json",
+        "csv_folder": "JavaScript_csv",
         "dependency_files": [
           "package.json",
           "yarn.lock",
@@ -83,6 +89,9 @@
       },
       "file_analysis": {
         "source_extensions": [".ts", ".tsx"],
+        "project_id": 41,
+        "json_folder": "JavaScript_json",
+        "csv_folder": "JavaScript_csv",
         "dependency_files": [
           "package.json",
           "yarn.lock",
@@ -118,6 +127,9 @@
       },
       "file_analysis": {
         "source_extensions": [".py"],
+        "project_id": 43,
+        "json_folder": "Python_json",
+        "csv_folder": "Python_csv",
         "dependency_files": [
           "requirements.txt",
           "pyproject.toml",
@@ -149,6 +161,9 @@
       },
       "file_analysis": {
         "source_extensions": [".go"],
+        "project_id": 45,
+        "json_folder": "Go_json",
+        "csv_folder": "Go_csv",
         "dependency_files": [
           "go.mod",
           "go.sum",
@@ -176,6 +191,9 @@
       },
       "file_analysis": {
         "source_extensions": [".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hh", ".hxx"],
+        "project_id": 44,
+        "json_folder": "Cpp_json",
+        "csv_folder": "Cpp_csv",
         "dependency_files": [
           "CMakeLists.txt",
           "Makefile",
@@ -211,12 +229,43 @@
       },
       "file_analysis": {
         "source_extensions": [".rs"],
+        "project_id": 46,
+        "json_folder": "Rust_json",
+        "csv_folder": "Rust_csv",
         "dependency_files": [
           "Cargo.toml",
           "Cargo.lock",
           "rust-toolchain.toml"
         ],
         "test_patterns": ["_test.rs"]
+      }
+    },
+    "C#": {
+      "display_name": "C#",
+      "sheet_name": "C#",
+      "target_language": "C#",
+      "github_language": "C#",
+      "project_id": 47,
+      "json_folder": "CSharp_json",
+      "csv_folder": "CSharp_csv",
+      "evaluation": {
+        "min_percentage": 70,
+        "min_stars": 400,
+        "loc_thresholds": {
+          "400": 150000,
+          "450": 120000,
+          "500": 100000,
+          "800": 75000,
+          "1500": 60000
+        }
+      },
+      "file_analysis": {
+        "source_extensions": [".cs"],
+        "dependency_files": [
+          "packages.config",
+          "*.csproj"
+        ],
+        "test_patterns": ["_test.cs", ".test.cs"]
       }
     }
   },

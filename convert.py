@@ -7,6 +7,8 @@ import argparse
 import re
 from datetime import datetime
 from pathlib import Path
+import pandas as pd
+import glob
 
 # Default input and output paths
 DEFAULT_INPUT_DIR = "json"
@@ -140,6 +142,31 @@ def check_repo_exists_in_lt(repo_name):
 def convert_repo_name_to_lt_format(repo_name):
     """Convert USER/REPO format to USER__REPO format for LT comparison."""
     return repo_name.replace("/", "__")
+
+def clean_metadata(obj):
+    """Remove specified fields from metadata object to reduce file size."""
+    fields_to_remove = [
+        'patch',
+        'test_patch',
+        'agent_patch',
+        'FAIL_TO_PASS',
+        'PASS_TO_PASS',
+        'test_output_before',
+        'errors_before',
+        'failed_before',
+        'test_output_after',
+        'errors_after',
+        'failed_after'
+    ]
+    
+    # Create a copy of the object to avoid modifying the original
+    cleaned_obj = obj.copy()
+    
+    # Remove specified fields
+    for field in fields_to_remove:
+        cleaned_obj.pop(field, None)
+    
+    return cleaned_obj
 
 def get_existing_pr_ids_for_repo(repo_name):
     """Fetches existing PR IDs for a specific repository from the labeling tool."""
@@ -329,7 +356,9 @@ def process_json_file(input_file, output_file, existing_repos=None, force=False,
         writer = csv.writer(csv_file)
         writer.writerow(['metadata'])
         for obj in final_data:
-            json_str = json.dumps(obj)
+            # Clean the metadata before writing
+            cleaned_obj = clean_metadata(obj)
+            json_str = json.dumps(cleaned_obj)
             writer.writerow([json_str])
     
     print(f"💾 Saved {final_pr_count} PRs to {output_file}")
@@ -346,7 +375,9 @@ def process_json_file(input_file, output_file, existing_repos=None, force=False,
                 writer = csv.writer(csv_file)
                 writer.writerow(['metadata'])
                 for obj in final_data:
-                    json_str = json.dumps(obj)
+                    # Clean the metadata before writing
+                    cleaned_obj = clean_metadata(obj)
+                    json_str = json.dumps(cleaned_obj)
                     writer.writerow([json_str])
             
             print(f"📄 Created new part file: {part_file} with {final_pr_count} new PRs")
@@ -698,85 +729,40 @@ def create_processing_report(processing_stats, base_dir):
     
     return report_path
 
+def convert_folder(source_directory, output_directory):
+    """
+    Converts all JSON files in a source directory to CSV files in an output directory.
+    """
+    if not os.path.exists(output_directory):
+        os.makedirs(output_directory)
+        print(f"Created output directory: {output_directory}")
+
+    json_files = glob.glob(os.path.join(source_directory, '*.json'))
+    print(f"Found {len(json_files)} JSON files in {source_directory}")
+
+    for json_file in json_files:
+        try:
+            base_name = os.path.basename(json_file).replace('.json', '')
+            csv_file = os.path.join(output_directory, f"{base_name}.csv")
+            print(f"Processing {json_file} -> {csv_file}")
+            process_json_file(json_file, csv_file)
+        except Exception as e:
+            print(f"Error processing {json_file}: {e}")
+
 def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Convert JSON files to CSV with optional duplicate detection')
-    parser.add_argument('--no-duplicate-detection', action='store_true', 
-                       help='Disable duplicate detection against labeling tool')
-    parser.add_argument('--force', action='store_true',
-                       help='Force processing even if output files already exist')
-    parser.add_argument('--good-prs-only', action='store_true',
-                       help='Filter PRs based on relevant PRs from pr_reports folder instead of date')
+    """
+    Main function to run the conversion as a standalone script.
+    """
+    parser = argparse.ArgumentParser(description="Convert JSON files from SWE-bench to CSV format.")
+    parser.add_argument("source_directory", help="The directory containing the JSON files to process.")
+    parser.add_argument("output_directory", help="The directory where CSV files will be saved.")
     args = parser.parse_args()
 
-    # Update global configuration based on command line arguments
-    global GOOD_PRS_ONLY
-    if args.good_prs_only:
-        GOOD_PRS_ONLY = True
-        print("GOOD_PRS_ONLY mode enabled - filtering based on relevant PRs from pr_reports folder")
+    print(f"Starting conversion from '{args.source_directory}' to '{args.output_directory}'")
+    convert_folder(args.source_directory, args.output_directory)
+    print("Conversion complete.")
 
-    # Get the base directory (where the script is located)
-    base_dir = Path(__file__).parent.absolute()
-
-    # Fetch existing repository names from labeling tool for duplicate detection (if enabled)
-    existing_repos = None
-    if not args.no_duplicate_detection:
-        existing_repos = get_existing_repos_set()
-
-    # Primary mode: automatically process all *_json language directories
-    if process_language_directories(base_dir, existing_repos=existing_repos, force=args.force):
-        return  # Completed language-scoped processing
-
-    # ---------------------------------------------------------------------
-    # Fallback legacy behaviour (single default input/output locations)
-    # ---------------------------------------------------------------------
-
-    input_path = os.path.join(base_dir, DEFAULT_INPUT_DIR)
-    output_path = os.path.join(base_dir, DEFAULT_OUTPUT_DIR)
-
-    # Collect statistics for legacy processing
-    legacy_stats = []
-
-    # Check if input path is a file or directory
-    if os.path.isfile(input_path):
-        # Process single file
-        base_name = os.path.splitext(os.path.basename(input_path))[0]
-        if base_name.endswith('_pr'):
-            base_name = base_name[:-3]
-        output_file = os.path.join(output_path, f"{base_name}.csv")
-        try:
-            result = process_json_file(input_path, output_file, existing_repos, args.force, base_dir, None)
-            if isinstance(result, dict) and result.get('success'):
-                legacy_stats.append(result)
-                print(f"✅ Successfully converted {input_path} to {output_file}")
-            elif result is True:
-                print(f"✅ Successfully processed {input_path}")
-        except Exception as e:
-            print(f"❌ An error occurred: {e}")
-            legacy_stats.append({
-                'repo_name': base_name,
-                'language': 'Unknown',
-                'initial_pr_count': 0,
-                'after_date_filter_count': 0,
-                'after_good_prs_filter_count': 0,
-                'after_lt_dedup_count': 0,
-                'after_local_dedup_count': 0,
-                'final_pr_count': 0,
-                'good_prs_in_reports': 0,
-                'missing_good_prs_count': 0,
-                'success': False,
-                'error': str(e)
-            })
-    elif os.path.isdir(input_path):
-        # Process directory
-        legacy_stats = process_directory(input_path, output_path, existing_repos, args.force, base_dir, None)
-    else:
-        print(f"❌ Error: Input path {input_path} does not exist")
-        return
-
-    # Create report for legacy processing if any files were processed
-    if legacy_stats:
-        create_processing_report(legacy_stats, base_dir)
-
-if __name__ == '__main__':
+if __name__ == "__main__":
+    # To run this script:
+    # python convert.py path/to/json_folder path/to/csv_folder
     main()

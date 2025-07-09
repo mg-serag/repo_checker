@@ -1,0 +1,2 @@
+pr_id,pr_url,issue_id,issue_url,non_test_code_changes,agent_result,agent_comment
+3492,https://github.com/unionlabs/union/pull/3492,3359,https://github.com/unionlabs/union/issues/3359,264,Good PR,"The issue provides a clear, actionable problem related to serialization changes needed for the `Slot` struct. It specifies the requirement to align with the beacon API specification, includes a relevant code example, and describes where to implement the changes. It does not suggest reverting previous changes, focuses on a single issue, and is primarily written in English."

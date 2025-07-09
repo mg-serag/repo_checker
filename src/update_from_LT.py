@@ -34,16 +34,19 @@ SHEETS_TO_UPDATE = {
     'Java': {
         'project_id': get_project_id('java'),  # Java project ID in labeling tool
         'description': 'Java repositories'
+    },
+    'Go': {
+        'project_id': get_project_id('go'),  # Go project ID in labeling tool
+        'description': 'Go repositories'
+    },
+    'Rust': {
+        'project_id': get_project_id('rust'),  # Rust project ID in labeling tool
+        'description': 'Rust repositories'
+    },
+    'C/C++': {
+        'project_id': get_project_id('cpp'),  # C/C++ project ID in labeling tool
+        'description': 'C/C++ repositories'
     }
-    # Add more sheets here as needed:
-    # 'Python': {
-    #     'project_id': get_project_id('python'),
-    #     'description': 'Python repositories'
-    # },
-    # 'Go': {
-    #     'project_id': get_project_id('go'),
-    #     'description': 'Go repositories'
-    # }
 }
 
 # --- Column Configuration ---

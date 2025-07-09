@@ -126,7 +126,7 @@ def main(target_pr_count):
     repo_toolchain_cache = {}
     
     # Query for popular, active Java repos
-    repo_query = f"language:java stars:>{MIN_STARS} sort:stars-desc"
+    repo_query = f"language:cpp stars:>{MIN_STARS} sort:stars-desc"
     
     try:
         repositories = g.search_repositories(query=repo_query)
