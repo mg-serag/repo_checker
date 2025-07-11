@@ -1,10 +1,11 @@
 {
   "languages": {
-    "Java": {
-      "display_name": "Java",
-      "sheet_name": "Java",
-      "target_language": "Java",
-      "github_language": "Java",
+    "Python": {
+      "display_name": "Python",
+      "sheet_name": "Python",
+      "project_id": 40,
+      "target_language": "Python",
+      "github_language": "Python",
       "evaluation": {
         "min_percentage": 70,
         "min_stars": 400,
@@ -17,27 +18,26 @@
         }
       },
       "file_analysis": {
-        "source_extensions": [".java"],
-        "project_id": 42,
-        "json_folder": "Java_json",
-        "csv_folder": "Java_csv",
+        "source_extensions": [".py"],
+        "json_folder": "Python_json",
+        "csv_folder": "Python_csv",
         "dependency_files": [
-          "pom.xml",
-          "build.gradle",
-          "build.gradle.kts",
-          "settings.gradle",
-          "settings.gradle.kts",
-          "gradlew",
-          "gradlew.bat",
-          "mvnw",
-          "mvnw.cmd"
+          "requirements.txt",
+          "pyproject.toml",
+          "setup.py",
+          "Pipfile",
+          "Pipfile.lock",
+          "poetry.lock",
+          "tox.ini",
+          "pytest.ini"
         ],
-        "test_patterns": ["test.java"]
+        "test_patterns": ["test"]
       }
     },
     "JavaScript": {
       "display_name": "JavaScript",
       "sheet_name": "JS/TS",
+      "project_id": 41,
       "target_language": "JavaScript",
       "github_language": "JavaScript",
       "evaluation": {
@@ -53,7 +53,6 @@
       },
       "file_analysis": {
         "source_extensions": [".js", ".jsx", ".ts", ".tsx"],
-        "project_id": 41,
         "json_folder": "JavaScript_json",
         "csv_folder": "JavaScript_csv",
         "dependency_files": [
@@ -68,12 +67,13 @@
           ".eslintrc.js",
           ".prettierrc.js"
         ],
-        "test_patterns": [".test.js", ".test.jsx", ".test.ts", ".test.tsx", ".spec.js", ".spec.jsx", ".spec.ts", ".spec.tsx"]
+        "test_patterns": ["test", "spec"]
       }
     },
     "TypeScript": {
       "display_name": "TypeScript",
       "sheet_name": "JS/TS",
+      "project_id": 41,
       "target_language": "TypeScript",
       "github_language": "TypeScript",
       "evaluation": {
@@ -89,7 +89,6 @@
       },
       "file_analysis": {
         "source_extensions": [".ts", ".tsx"],
-        "project_id": 41,
         "json_folder": "JavaScript_json",
         "csv_folder": "JavaScript_csv",
         "dependency_files": [
@@ -106,14 +105,15 @@
           ".eslintrc.js",
           ".prettierrc.js"
         ],
-        "test_patterns": [".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"]
+        "test_patterns": ["test", "spec"]
       }
     },
-    "Python": {
-      "display_name": "Python",
-      "sheet_name": "Python",
-      "target_language": "Python",
-      "github_language": "Python",
+    "Java": {
+      "display_name": "Java",
+      "sheet_name": "Java",
+      "project_id": 42,
+      "target_language": "Java",
+      "github_language": "Java",
       "evaluation": {
         "min_percentage": 70,
         "min_stars": 400,
@@ -126,26 +126,27 @@
         }
       },
       "file_analysis": {
-        "source_extensions": [".py"],
-        "project_id": 43,
-        "json_folder": "Python_json",
-        "csv_folder": "Python_csv",
+        "source_extensions": [".java"],
+        "json_folder": "Java_json",
+        "csv_folder": "Java_csv",
         "dependency_files": [
-          "requirements.txt",
-          "pyproject.toml",
-          "setup.py",
-          "Pipfile",
-          "Pipfile.lock",
-          "poetry.lock",
-          "tox.ini",
-          "pytest.ini"
+          "pom.xml",
+          "build.gradle",
+          "build.gradle.kts",
+          "settings.gradle",
+          "settings.gradle.kts",
+          "gradlew",
+          "gradlew.bat",
+          "mvnw",
+          "mvnw.cmd"
         ],
-        "test_patterns": ["test_", "_test.py"]
+        "test_patterns": ["test"]
       }
     },
     "Go": {
       "display_name": "Go",
       "sheet_name": "Go",
+      "project_id": 43,
       "target_language": "Go",
       "github_language": "Go",
       "evaluation": {
@@ -161,7 +162,6 @@
       },
       "file_analysis": {
         "source_extensions": [".go"],
-        "project_id": 45,
         "json_folder": "Go_json",
         "csv_folder": "Go_csv",
         "dependency_files": [
@@ -170,12 +170,13 @@
           "Gopkg.toml",
           "Gopkg.lock"
         ],
-        "test_patterns": ["_test.go"]
+        "test_patterns": ["test"]
       }
     },
     "C/C++": {
       "display_name": "C/C++",
       "sheet_name": "C/C++",
+      "project_id": 44,
       "target_language": "C",
       "github_language": "C",
       "evaluation": {
@@ -191,7 +192,6 @@
       },
       "file_analysis": {
         "source_extensions": [".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hh", ".hxx"],
-        "project_id": 44,
         "json_folder": "Cpp_json",
         "csv_folder": "Cpp_csv",
         "dependency_files": [
@@ -208,12 +208,46 @@
           "meson.build",
           "SConstruct"
         ],
-        "test_patterns": [".test.c", ".test.cpp", ".test.cc", ".test.cxx", "_test.c", "_test.cpp", "_test.cc", "_test.cxx"]
+        "test_patterns": ["test"]
+      }
+    },
+    "Ruby": {
+      "display_name": "Ruby",
+      "sheet_name": "Ruby",
+      "project_id": 45,
+      "target_language": "Ruby",
+      "github_language": "Ruby",
+      "evaluation": {
+        "min_percentage": 70,
+        "min_stars": 400,
+        "loc_thresholds": {
+          "400": 150000,
+          "450": 120000,
+          "500": 100000,
+          "800": 75000,
+          "1500": 60000
+        }
+      },
+      "file_analysis": {
+        "source_extensions": [".rb"],
+        "json_folder": "Ruby_json",
+        "csv_folder": "Ruby_csv",
+        "dependency_files": [
+          "Gemfile",
+          "Gemfile.lock",
+          "*.gemspec",
+          "Rakefile",
+          "config.ru",
+          ".ruby-version",
+          ".rbenv-version"
+        ],
+        "test_patterns": ["test", "spec"]
       }
     },
     "Rust": {
       "display_name": "Rust",
       "sheet_name": "Rust",
+      "project_id": 47,
       "target_language": "Rust",
       "github_language": "Rust",
       "evaluation": {
@@ -229,7 +263,6 @@
       },
       "file_analysis": {
         "source_extensions": [".rs"],
-        "project_id": 46,
         "json_folder": "Rust_json",
         "csv_folder": "Rust_csv",
         "dependency_files": [
@@ -237,17 +270,15 @@
           "Cargo.lock",
           "rust-toolchain.toml"
         ],
-        "test_patterns": ["_test.rs"]
+        "test_patterns": ["test"]
       }
     },
     "C#": {
       "display_name": "C#",
       "sheet_name": "C#",
+      "project_id": 48,
       "target_language": "C#",
       "github_language": "C#",
-      "project_id": 47,
-      "json_folder": "CSharp_json",
-      "csv_folder": "CSharp_csv",
       "evaluation": {
         "min_percentage": 70,
         "min_stars": 400,
@@ -261,11 +292,13 @@
       },
       "file_analysis": {
         "source_extensions": [".cs"],
+        "json_folder": "CSharp_json",
+        "csv_folder": "CSharp_csv",
         "dependency_files": [
           "packages.config",
           "*.csproj"
         ],
-        "test_patterns": ["_test.cs", ".test.cs"]
+        "test_patterns": ["test"]
       }
     }
   },

@@ -1978,3 +1978,6 @@ src/__pycache__/logical_repo_checks.cpython-312.pyc
 src/__pycache__/logical_repo_checks.cpython-312.pyc
 src/__pycache__/logical_repo_checks.cpython-312.pyc
 /src/__pycache__
+/batches
+/cache
+/repo_evaluator

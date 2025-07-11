@@ -7,6 +7,12 @@ from datetime import datetime
 import time
 import argparse
 
+# Import centralized configuration functions
+from config_utils import (
+    get_all_language_configs, get_language_sheet_name, 
+    get_dependency_files, get_language_github_language
+)
+
 # --- Configuration ---
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 SHEET_ID = '1XMbstebCi1xFSwJ7cTN-DXv4jFmdH2owWBE3R7YsXK0'
@@ -21,64 +27,50 @@ CHECK_OTHER_SHEETS = True  # Whether to check other language sheets for repos th
 # Default target language
 TARGET_LANGUAGE = "Rust"
 
-# Language to Sheet Name mapping
-LANGUAGE_TO_SHEET = {
-    "JavaScript": "JS/TS",
-    "Java": "Java", 
-    "Rust": "Rust",
-    "C/C++": "C/C++",
-    "Go": "Go"
-}
-
-# Language-specific toolchain detection
-LANGUAGE_TOOLCHAINS = {
-    "Java": {
-        "files": ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"],
-        "description": "Maven or Gradle"
-    },
-    "JavaScript": {
-        "files": ["package.json", "yarn.lock", "pnpm-lock.yaml", "package-lock.json"],
-        "description": "npm, yarn, or pnpm"
-    },
-    "TypeScript": {
-        "files": ["package.json", "tsconfig.json", "tsconfig.build.json"],
-        "description": "npm with TypeScript"
-    },
-    "Python": {
-        "files": ["requirements.txt", "pyproject.toml", "setup.py", "Pipfile", "poetry.lock"],
-        "description": "pip, poetry, or pipenv"
-    },
-    "Go": {
-        "files": ["go.mod", "go.sum", "Gopkg.toml", "Gopkg.lock"],
-        "description": "Go modules or dep"
-    },
-    "C/C++": {
-        "files": ["CMakeLists.txt", "Makefile", "configure", "configure.ac", "autogen.sh", "bootstrap", "build.sh", "setup.py", "package.json", "Cargo.toml", "meson.build", "SConstruct"],
-        "description": "CMake, Make, autotools, or other build systems"
-    },
-    "Rust": {
-        "files": ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"],
-        "description": "Cargo"
-    }
-}
-
-
 def get_sheet_name_for_language(language):
-    """Get the sheet name for a given language."""
-    return LANGUAGE_TO_SHEET.get(language, language)
+    """Get the sheet name for a given language using centralized config."""
+    try:
+        return get_language_sheet_name(language)
+    except (KeyError, FileNotFoundError):
+        # Fallback for unknown languages
+        return language
 
 def get_languages_for_sheet(sheet_name):
     """Get the languages that should be scanned for a given sheet name."""
-    if sheet_name == "JS/TS":
-        return ["JavaScript", "TypeScript"]
-    elif sheet_name == "C/C++":
-        return ["C/C++"]
-    else:
-        # For other sheets, return the language that maps to this sheet
-        for lang, sheet in LANGUAGE_TO_SHEET.items():
-            if sheet == sheet_name:
-                return [lang]
-    return []
+    try:
+        all_languages = get_all_language_configs()
+        languages_for_sheet = []
+        
+        for lang_name, lang_config in all_languages.items():
+            if lang_config.get('sheet_name') == sheet_name:
+                languages_for_sheet.append(lang_name)
+        
+        return languages_for_sheet if languages_for_sheet else [sheet_name]
+    except (KeyError, FileNotFoundError):
+        # Fallback mappings
+        if sheet_name == "JS/TS":
+            return ["JavaScript", "TypeScript"]
+        elif sheet_name == "C/C++":
+            return ["C/C++"]
+        else:
+            return [sheet_name]
+
+def get_language_toolchain_description(language):
+    """Get toolchain description for a language using centralized config."""
+    try:
+        dependency_files = get_dependency_files(language)
+        if not dependency_files:
+            return "Standard build tools"
+        
+        # Create a description based on common dependency files
+        files_list = list(dependency_files)[:3]  # Show first 3 files
+        if len(dependency_files) > 3:
+            files_str = ", ".join(files_list) + ", etc."
+        else:
+            files_str = ", ".join(files_list)
+        return f"Project with {files_str}"
+    except (KeyError, FileNotFoundError):
+        return "Standard build tools"
 
 def check_other_language_sheets(gsheet_client, target_language, target_sheet_name):
     """
@@ -92,6 +84,13 @@ def check_other_language_sheets(gsheet_client, target_language, target_sheet_nam
     print(f"\n=== Checking other language sheets for {target_language} repositories ===")
     
     try:
+        # Get all available sheets from language config
+        all_languages = get_all_language_configs()
+        all_sheet_names = set()
+        for lang_config in all_languages.values():
+            all_sheet_names.add(lang_config.get('sheet_name', ''))
+        all_sheet_names.discard('')  # Remove empty sheet names
+        
         # Get existing repos in target sheet
         target_sheet = gsheet_client.open_by_key(SHEET_ID).worksheet(target_sheet_name)
         target_values = target_sheet.get_all_values()
@@ -101,7 +100,7 @@ def check_other_language_sheets(gsheet_client, target_language, target_sheet_nam
         repos_to_add = []
         
         # Check each language sheet
-        for lang, sheet_name in LANGUAGE_TO_SHEET.items():
+        for sheet_name in all_sheet_names:
             if sheet_name == target_sheet_name:
                 continue  # Skip the target sheet itself
                 
@@ -163,26 +162,38 @@ def get_github_client():
 def has_modern_toolchain(repo, language, cache):
     """
     Checks if a repository contains appropriate build/dependency files for the target language.
+    Uses centralized language configuration.
     """
     if repo.full_name in cache:
         return cache[repo.full_name]
     
-    toolchain_config = LANGUAGE_TOOLCHAINS.get(language)
-    if not toolchain_config:
-        # If language not configured, accept all repos
-        cache[repo.full_name] = True
-        return True
-    
     try:
-        for file in toolchain_config["files"]:
+        dependency_files = get_dependency_files(language)
+        if not dependency_files:
+            # If no dependency files configured, accept all repos
+            cache[repo.full_name] = True
+            return True
+        
+        for file_pattern in dependency_files:
             try:
-                repo.get_contents(file)
+                # Handle glob patterns like *.gemspec
+                if '*' in file_pattern:
+                    # For now, skip glob patterns in repository file checking
+                    # This would require more complex GitHub API usage
+                    continue
+                
+                repo.get_contents(file_pattern)
                 cache[repo.full_name] = True
                 return True
             except GithubException:
                 continue
+        
         cache[repo.full_name] = False
         return False
+    except (KeyError, FileNotFoundError):
+        # Fallback to accept all repos if config not available
+        cache[repo.full_name] = True
+        return True
     except GithubException as e:
         print(f"  [Warning] Could not check toolchain for {repo.full_name}: {e}")
         cache[repo.full_name] = False
@@ -190,18 +201,25 @@ def has_modern_toolchain(repo, language, cache):
 
 def get_github_language_query(language):
     """
-    Converts our language names to GitHub API language queries.
+    Converts our language names to GitHub API language queries using centralized config.
     """
-    language_mapping = {
-        "Java": "language:java",
-        "JavaScript": "language:javascript",
-        "TypeScript": "language:typescript",
-        "Python": "language:python",
-        "Go": "language:go",
-        "C/C++": "language:cpp",
-        "Rust": "language:rust"
-    }
-    return language_mapping.get(language, f"language:{language.lower()}")
+    try:
+        github_language = get_language_github_language(language)
+        return f"language:{github_language.lower()}"
+    except (KeyError, FileNotFoundError):
+        # Fallback mapping
+        language_mapping = {
+            "Java": "language:java",
+            "JavaScript": "language:javascript",
+            "TypeScript": "language:typescript",
+            "Python": "language:python",
+            "Go": "language:go",
+            "C/C++": "language:cpp",
+            "Rust": "language:rust",
+            "C#": "language:csharp",
+            "Ruby": "language:ruby"
+        }
+        return language_mapping.get(language, f"language:{language.lower()}")
 
 def get_existing_repositories(gsheet_client, sheet_name):
     """
@@ -284,7 +302,7 @@ def search_github_repos(gh_client, existing_repo_names, max_needed, language, gs
             repo_query = f"{language_query} stars:>{MIN_STARS} sort:stars-desc"
             
             print(f"GitHub query: {repo_query}")
-            print(f"Toolchain requirement: {LANGUAGE_TOOLCHAINS.get(search_language, {}).get('description', 'None')}")
+            print(f"Toolchain requirement: {get_language_toolchain_description(search_language)}")
             
             repositories = gh_client.search_repositories(query=repo_query)
             print("Starting repository discovery...")
@@ -316,7 +334,7 @@ def search_github_repos(gh_client, existing_repo_names, max_needed, language, gs
                 
                 # Check for modern toolchain
                 if not has_modern_toolchain(repo, search_language, repo_toolchain_cache):
-                    print(f"  [Skip] Repository does not use {LANGUAGE_TOOLCHAINS.get(search_language, {}).get('description', 'required toolchain')}.")
+                    print(f"  [Skip] Repository does not use {get_language_toolchain_description(search_language)}.")
                     toolchain_skipped += 1
                     continue
                 
@@ -433,7 +451,7 @@ def print_configuration():
     print(f"Check Other Sheets: {CHECK_OTHER_SHEETS}")
     print(f"Sheet ID: {SHEET_ID}")
     print("-" * 80)
-    toolchain_desc = LANGUAGE_TOOLCHAINS.get(TARGET_LANGUAGE, {}).get('description', 'None')
+    toolchain_desc = get_language_toolchain_description(TARGET_LANGUAGE)
     print(f"Toolchain Requirement: {toolchain_desc}")
     print("=" * 80)
     print()

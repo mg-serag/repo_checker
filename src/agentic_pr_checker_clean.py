@@ -7,6 +7,7 @@ import csv
 from datetime import datetime
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 import requests
 from openai import OpenAI
@@ -15,7 +16,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 
 # --- Configuration ---
-TARGET_LANGUAGE = "Rust"  # Set target language directly
+TARGET_LANGUAGE = "JavaScript"  # Set target language directly
 
 # --- Script Behavior ---
 DEBUG_MODE = False
@@ -37,9 +38,9 @@ SINGLE_REPO_OUTPUT_DIR = "repo_evaluator/pr_reports"
 # --- Load Configuration from Centralized Config ---
 from config_utils import (
     get_spreadsheet_key, get_github_token, get_openai_api_key,
-    get_language_config, get_source_extensions, get_dependency_files,
+    get_language_config, get_all_language_configs, get_source_extensions, get_dependency_files,
     get_test_patterns, get_test_directories, get_non_code_extensions,
-    get_universal_test_extensions
+    get_universal_test_extensions, get_language_csv_folder
 )
 
 # Load tokens and configuration
@@ -110,6 +111,61 @@ Respond with a JSON object containing two keys:
 2. "comment": A brief explanation for your decision.
 """
 
+# --- Progress Tracking ---
+
+class ProgressTracker:
+    """Thread-safe progress tracker for parallel processing."""
+    
+    def __init__(self, total_items, description="Processing"):
+        self.total_items = total_items
+        self.completed_items = 0
+        self.description = description
+        self.lock = Lock()
+        self.start_time = time.time()
+        
+    def update(self, increment=1):
+        """Update progress by increment."""
+        with self.lock:
+            self.completed_items += increment
+            self._print_progress()
+    
+    def _print_progress(self):
+        """Print current progress."""
+        if self.total_items == 0:
+            percentage = 100.0
+        else:
+            percentage = (self.completed_items / self.total_items) * 100
+        
+        elapsed_time = time.time() - self.start_time
+        if self.completed_items > 0:
+            estimated_total_time = elapsed_time * (self.total_items / self.completed_items)
+            remaining_time = estimated_total_time - elapsed_time
+            remaining_str = f" | ETA: {remaining_time:.1f}s"
+        else:
+            remaining_str = ""
+        
+        # Create progress bar
+        bar_length = 30
+        filled_length = int(bar_length * self.completed_items / max(self.total_items, 1))
+        bar = '█' * filled_length + '░' * (bar_length - filled_length)
+        
+        print(f"\r🔄 {self.description}: [{bar}] {self.completed_items}/{self.total_items} ({percentage:.1f}%) | {elapsed_time:.1f}s{remaining_str}", end='', flush=True)
+        
+        if self.completed_items >= self.total_items:
+            print()  # New line when complete
+
+def create_simple_progress_bar(current, total, prefix="Progress", length=30):
+    """Create a simple text-based progress bar."""
+    if total == 0:
+        percentage = 100.0
+    else:
+        percentage = (current / total) * 100
+    
+    filled_length = int(length * current / max(total, 1))
+    bar = '█' * filled_length + '░' * (length - filled_length)
+    
+    return f"{prefix}: [{bar}] {current}/{total} ({percentage:.1f}%)"
+
 # --- Utility Functions ---
 
 def is_english(text):
@@ -122,60 +178,48 @@ def is_english(text):
     return (ascii_chars / total_chars) >= 0.9
 
 def _is_test_file(filepath: str, lang_name: str) -> bool:
-    """Determine if a path looks like a test file for the given language."""
+    """Determine if a path looks like a test file - relaxed approach."""
     path_norm = filepath.replace("\\", "/").lower()
-    base = os.path.basename(path_norm)
     
-    # Check for universal test file extensions
+    # Simple check: if "test" appears anywhere in the path, it's a test file
+    if "test" in path_norm:
+        return True
+    
+    # Also check for "spec" as it's commonly used for test files
+    if "spec" in path_norm:
+        return True
+    
+    # Check for universal test file extensions as fallback
     ext = os.path.splitext(filepath)[1].lower()
     if ext in UNIVERSAL_TEST_EXT:
         return True
-    
-    # Check for test directories
-    if any(test_dir in path_norm for test_dir in TEST_DIRECTORIES):
-        return True
-    
-    # Check for test patterns in filename
-    if any(token in base for token in ("test", "spec")):
-        return True
-    
-    # Language-specific test patterns
-    try:
-        from config_utils import get_test_patterns
-        test_patterns = get_test_patterns(lang_name)
-        if any(base.endswith(pattern) or base.startswith(pattern) for pattern in test_patterns):
-            return True
-    except (FileNotFoundError, KeyError):
-        # Fallback patterns
-        if lang_name == "Java" and base.endswith("test.java"):
-            return True
-        if lang_name == "Python" and (base.startswith("test_") or base.endswith("_test.py")):
-            return True
-        if lang_name in ["JavaScript", "TypeScript"] and any(base.endswith(suffix) for suffix in ['.test.js', '.test.jsx', '.test.ts', '.test.tsx', '.spec.js', '.spec.jsx', '.spec.ts', '.spec.tsx']):
-            return True
-        if lang_name == "Go" and base.endswith("_test.go"):
-            return True
-        if lang_name == "C/C++" and any(base.endswith(suffix) for suffix in ['.test.c', '.test.cpp', '.test.cc', '.test.cxx', '_test.c', '_test.cpp', '_test.cc', '_test.cxx']):
-            return True
-        if lang_name == "Rust" and base.endswith("_test.rs"):
-            return True
     
     return False
 
 def get_language_output_dir():
     """Returns the language-specific output directory for PR reports."""
-    language_folder_map = {
-        'Java': 'Java_pr_reports',
-        'JavaScript': 'JavaScript_pr_reports', 
-        'TypeScript': 'TypeScript_pr_reports',
-        'Python': 'Python_pr_reports',
-        'Go': 'Go_pr_reports',
-        'C/C++': 'C_Cpp_pr_reports',
-        'Rust': 'Rust_pr_reports'
-    }
+    try:
+        # Try to get the folder name from language config
+        csv_folder = get_language_csv_folder(TARGET_LANGUAGE)
+        # Convert csv folder name to pr_reports folder name
+        folder_name = csv_folder.replace('_csv', '_pr_reports').replace('_json', '_pr_reports')
+        output_dir = os.path.join("repo_evaluator", folder_name)
+    except (FileNotFoundError, KeyError):
+        # Fallback to manual mapping
+        language_folder_map = {
+            'Java': 'Java_pr_reports',
+            'JavaScript': 'JavaScript_pr_reports', 
+            'TypeScript': 'JavaScript_pr_reports',  # TypeScript uses same as JavaScript
+            'Python': 'Python_pr_reports',
+            'Go': 'Go_pr_reports',
+            'C/C++': 'C_Cpp_pr_reports',
+            'Rust': 'Rust_pr_reports',
+            'C#': 'CSharp_pr_reports',
+            'Ruby': 'Ruby_pr_reports'
+        }
+        folder_name = language_folder_map.get(TARGET_LANGUAGE, f'{TARGET_LANGUAGE}_pr_reports')
+        output_dir = os.path.join("repo_evaluator", folder_name)
     
-    folder_name = language_folder_map.get(TARGET_LANGUAGE, f'{TARGET_LANGUAGE}_pr_reports')
-    output_dir = os.path.join("repo_evaluator", folder_name)
     os.makedirs(output_dir, exist_ok=True)
     return output_dir
 
@@ -302,9 +346,10 @@ def parse_github_url(url):
 
 def get_merged_prs(owner, repo, merged_after_date):
     """Fetch merged PRs for a repository since a given date."""
-    print(f"📡 Fetching merged PRs for {owner}/{repo}...")
+    print(f"📡 Fetching merged PRs for {owner}/{repo} since {merged_after_date.date()}...")
     prs = []
     page = 1
+    total_fetched = 0
     
     while True:
         url = f"https://api.github.com/repos/{owner}/{repo}/pulls"
@@ -317,6 +362,9 @@ def get_merged_prs(owner, repo, merged_after_date):
         if not data:
             break
         
+        total_fetched += len(data)
+        print(f"   📄 Page {page}: Fetched {len(data)} PRs (total: {total_fetched})", end='', flush=True)
+        
         page_had_valid_prs = False
         for pr in data:
             if pr.get("merged_at"):
@@ -325,13 +373,15 @@ def get_merged_prs(owner, repo, merged_after_date):
                     prs.append(pr)
                     page_had_valid_prs = True
         
+        print(f" → {len(prs)} PRs merged after {merged_after_date.date()} so far")
+        
         if not page_had_valid_prs or len(data) < 100:
-            print("Reached last page or PRs older than the cutoff date. Stopping.")
+            print(f"   🏁 Reached last page or PRs older than cutoff date. Stopping at page {page}.")
             break
         page += 1
         time.sleep(0.5)
     
-    print(f"✅ Found {len(prs)} merged PRs since {merged_after_date.date()}.")
+    print(f"✅ Found {len(prs)} merged PRs since {merged_after_date.date()} (from {total_fetched} total PRs checked).")
     return prs
 
 def get_pr_files(pr_files_url):
@@ -429,12 +479,29 @@ def run_llm_check(issue_body):
 
 def find_logically_relevant_prs(owner, repo):
     """Find PRs that pass all logical checks and are candidates for agentic review."""
-    print(f"🔍 Finding logically relevant PRs for {owner}/{repo}...")
+    print(f"\n🔍 LOGICAL FILTERING for {owner}/{repo}...")
     all_prs = get_merged_prs(owner, repo, MERGED_AFTER_DATE)
     logically_relevant_prs = []
     
-    for pr in all_prs:
+    # Initialize counters for detailed reporting
+    filter_stats = {
+        'total_prs': len(all_prs),
+        'no_issue': 0,
+        'not_english': 0,
+        'insufficient_changes': 0,
+        'file_checks_failed': 0,
+        'passed': 0
+    }
+    
+    print(f"📈 Starting logical analysis of {len(all_prs)} PRs...")
+    
+    for i, pr in enumerate(all_prs, 1):
         pr_number = pr.get('number')
+        
+        # Show progress every 10 PRs or in debug mode
+        if i % 10 == 0 or DEBUG_MODE:
+            progress_bar = create_simple_progress_bar(i, len(all_prs), "Filtering")
+            print(f"\r{progress_bar}", end='', flush=True)
 
         if DEBUG_MODE: 
             print(f"\n--- Analyzing PR #{pr_number} ---")
@@ -443,6 +510,7 @@ def find_logically_relevant_prs(owner, repo):
         # Extract issue number
         issue_number = extract_issue_number(pr.get('body'))
         if not issue_number:
+            filter_stats['no_issue'] += 1
             if DEBUG_MODE:
                 print(f"  - Skip: No unique issue found.")
             continue
@@ -466,6 +534,7 @@ def find_logically_relevant_prs(owner, repo):
         # Language filtering: Issue must be in English
         issue_body = issue_json.get('body', '')
         if not is_english(issue_body):
+            filter_stats['not_english'] += 1
             if DEBUG_MODE:
                 print(f"  - Skip: Issue #{issue_number} statement contains too many non-English characters.")
             continue
@@ -502,6 +571,7 @@ def find_logically_relevant_prs(owner, repo):
         
         # Require minimum 20 lines of changes in non-test code files
         if non_test_code_changes < 20:
+            filter_stats['insufficient_changes'] += 1
             if DEBUG_MODE:
                 print(f"  - Skip: PR #{pr_number} has only {non_test_code_changes} lines of changes in non-test code files (minimum 20 required).")
             continue
@@ -509,10 +579,12 @@ def find_logically_relevant_prs(owner, repo):
         # Run file analysis checks
         status, reason = analyze_pr_files(files)
         if status != "Pass":
+            filter_stats['file_checks_failed'] += 1
             if DEBUG_MODE:
                 print(f"  - Skip: {reason}")
             continue
         
+        filter_stats['passed'] += 1
         if DEBUG_MODE:
             print(f"  - Pass: Meets all logical criteria (non-test code changes: {non_test_code_changes} lines).")
         
@@ -522,28 +594,46 @@ def find_logically_relevant_prs(owner, repo):
         pr_data['non_test_code_changes'] = non_test_code_changes
         logically_relevant_prs.append(pr_data)
 
-    print(f"✅ Found {len(logically_relevant_prs)} logically relevant PRs out of {len(all_prs)} total PRs checked.")
+    # Final progress bar
+    progress_bar = create_simple_progress_bar(len(all_prs), len(all_prs), "Filtering")
+    print(f"\r{progress_bar}")
+    
+    # Detailed filtering summary
+    print(f"\n📊 LOGICAL FILTERING RESULTS for {owner}/{repo}:")
+    print(f"   📈 Total PRs analyzed: {filter_stats['total_prs']}")
+    print(f"   ❌ No linked issue: {filter_stats['no_issue']}")
+    print(f"   ❌ Not in English: {filter_stats['not_english']}")
+    print(f"   ❌ Insufficient changes: {filter_stats['insufficient_changes']}")
+    print(f"   ❌ Failed file checks: {filter_stats['file_checks_failed']}")
+    print(f"   ✅ Passed all logical checks: {filter_stats['passed']}")
+    
+    success_rate = (filter_stats['passed'] / max(filter_stats['total_prs'], 1)) * 100
+    print(f"   📊 Success rate: {success_rate:.1f}%")
+    
     return logically_relevant_prs, len(all_prs)
 
 def run_parallel_agentic_checks(prs_to_check, owner, repo):
     """Run agentic checks on multiple PRs in parallel."""
     agent_decisions = {}
+    progress_tracker = ProgressTracker(len(prs_to_check), f"🤖 Analyzing PRs for {owner}/{repo}")
+    
+    print(f"\n🚀 Starting parallel processing of {len(prs_to_check)} PRs with {MAX_WORKERS} workers...")
     
     def process_single_pr(pr):
         """Process a single PR with agentic check."""
         pr_number = pr['number']
         try:
-            print(f"🤖 Processing PR #{pr_number} (parallel)...")
-            
             issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr['issue_number']}"
             issue_body = get_issue_body(issue_url)
             
             result, comment = run_llm_check(issue_body)
-            print(f"  ✅ PR #{pr_number}: {result} | {comment}")
+            
+            # Update progress
+            progress_tracker.update()
             
             return pr_number, {"result": result, "comment": comment}
         except Exception as e:
-            print(f"  ❌ PR #{pr_number}: Error - {e}")
+            progress_tracker.update()
             return pr_number, {"result": "Bad PR", "comment": f"Error during processing: {e}"}
     
     # Use ThreadPoolExecutor for parallel processing
@@ -557,29 +647,41 @@ def run_parallel_agentic_checks(prs_to_check, owner, repo):
             except Exception as e:
                 pr = future_to_pr[future]
                 pr_number = pr['number']
-                print(f"❌ Exception for PR #{pr_number}: {e}")
                 agent_decisions[pr_number] = {"result": "Bad PR", "comment": f"Exception: {e}"}
     
-    print(f"📊 Completed parallel processing of {len(agent_decisions)} PRs")
+    # Summary of results
+    good_prs = sum(1 for d in agent_decisions.values() if d.get('result') == 'Good PR')
+    bad_prs = len(agent_decisions) - good_prs
+    
+    print(f"\n📊 Parallel processing completed:")
+    print(f"   ✅ Good PRs found: {good_prs}")
+    print(f"   ❌ Bad PRs found: {bad_prs}")
+    print(f"   📈 Total processed: {len(agent_decisions)}")
+    
     return agent_decisions
 
 def run_agentic_check_on_repo(logically_relevant_prs, owner, repo):
     """Run agentic (LLM) checks on logically relevant PRs."""
     if not logically_relevant_prs:
+        print("⚠️ No logically relevant PRs found for agentic analysis.")
         return False, {}
 
     # Apply threshold to determine how many PRs to process
     total_prs = len(logically_relevant_prs)
     prs_to_process = int(total_prs * PR_PROCESSING_THRESHOLD)
     
-    print(f"📊 Processing {prs_to_process}/{total_prs} PRs (threshold: {PR_PROCESSING_THRESHOLD:.1%})")
+    print(f"\n📊 AGENTIC ANALYSIS PLAN for {owner}/{repo}:")
+    print(f"   📈 Total logically relevant PRs: {total_prs}")
+    print(f"   🎯 PRs to analyze (threshold {PR_PROCESSING_THRESHOLD:.1%}): {prs_to_process}")
+    print(f"   🏆 Target good PRs needed: {TARGET_GOOD_PRS}")
+    print(f"   🤖 LLM Model: {LLM_MODEL}")
     
     prs_to_check = logically_relevant_prs[:prs_to_process]
     good_prs_found = 0
     agent_decisions = {}
     
     if ENABLE_PARALLEL_PROCESSING and len(prs_to_check) > 1:
-        print(f"🚀 Using parallel processing with {MAX_WORKERS} workers...")
+        print(f"\n🚀 Using parallel processing with {MAX_WORKERS} workers...")
         agent_decisions = run_parallel_agentic_checks(prs_to_check, owner, repo)
         
         # Count good PRs found
@@ -587,27 +689,49 @@ def run_agentic_check_on_repo(logically_relevant_prs, owner, repo):
                            if decision.get('result') == 'Good PR')
         
         if good_prs_found >= TARGET_GOOD_PRS:
-            print(f"🎯 Target of {TARGET_GOOD_PRS} good PRs reached.")
+            print(f"🎯 SUCCESS: Target of {TARGET_GOOD_PRS} good PRs reached!")
+        else:
+            print(f"⚠️ Only found {good_prs_found}/{TARGET_GOOD_PRS} good PRs")
     else:
-        print("🔄 Using sequential processing...")
-        for pr in prs_to_check:
+        print(f"\n🔄 Using sequential processing for {len(prs_to_check)} PRs...")
+        
+        for i, pr in enumerate(prs_to_check, 1):
             pr_number = pr['number']
-            print(f"\n🤖 Running agentic check on PR #{pr_number}...")
+            
+            # Show progress
+            progress_bar = create_simple_progress_bar(i-1, len(prs_to_check), "Progress")
+            print(f"\r{progress_bar}", end='', flush=True)
+            
+            print(f"\n🤖 Analyzing PR #{pr_number} ({i}/{len(prs_to_check)})...")
             
             issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr['issue_number']}"
             issue_body = get_issue_body(issue_url)
             
             result, comment = run_llm_check(issue_body)
-            print(f"  - LLM Result: {result} | Comment: {comment}")
+            print(f"   💡 Result: {result}")
+            print(f"   📝 Reason: {comment}")
             
             agent_decisions[pr_number] = {"result": result, "comment": comment}
             
             if result == "Good PR":
                 good_prs_found += 1
+                print(f"   ✅ Good PRs found so far: {good_prs_found}/{TARGET_GOOD_PRS}")
                 if good_prs_found >= TARGET_GOOD_PRS:
-                    print(f"🎯 Target of {TARGET_GOOD_PRS} good PRs reached.")
+                    print(f"\n🎯 SUCCESS: Target of {TARGET_GOOD_PRS} good PRs reached!")
                     break
-            time.sleep(1)
+            
+            time.sleep(1)  # Rate limiting
+        
+        # Final progress bar
+        progress_bar = create_simple_progress_bar(len(prs_to_check), len(prs_to_check), "Progress")
+        print(f"\r{progress_bar}")
+        
+        # Sequential summary
+        bad_prs = len(agent_decisions) - good_prs_found
+        print(f"\n📊 Sequential processing completed:")
+        print(f"   ✅ Good PRs found: {good_prs_found}")
+        print(f"   ❌ Bad PRs found: {bad_prs}")
+        print(f"   📈 Total processed: {len(agent_decisions)}")
     
     return good_prs_found >= TARGET_GOOD_PRS, agent_decisions
 
@@ -785,7 +909,7 @@ def main():
             agentic_val = row.iloc[agentic_col_idx] if agentic_col_idx < len(row) else ''
 
             user_repo_present = isinstance(user_repo, str) and '/' in user_repo.strip()
-            logic_passed = isinstance(logical_check, str) and logical_check.strip() == 'Yes'
+            logic_passed = isinstance(logical_check, str) and logical_check.strip().lower() in ('yes', 'manual')
             agentic_empty = pd.isna(agentic_val) or str(agentic_val).strip() == ''
 
             if user_repo_present and logic_passed and agentic_empty:
@@ -797,9 +921,15 @@ def main():
     print(f"Found {len(unprocessed_rows)} repositories that passed logical checks and need agentic evaluation.")
     
     # Process each repository
-    for sheet_row_index, row in unprocessed_rows:
+    print(f"\n🚀 PROCESSING {len(unprocessed_rows)} REPOSITORIES")
+    print("=" * 80)
+    
+    for repo_index, (sheet_row_index, row) in enumerate(unprocessed_rows, 1):
         user_repo = row.iloc[user_repo_col_idx].strip()
-        print(f"\n{'='*60}\nProcessing Row {sheet_row_index}: {user_repo}\n{'='*60}")
+        
+        print(f"\n{'='*80}")
+        print(f"📦 REPOSITORY {repo_index}/{len(unprocessed_rows)}: {user_repo} (Sheet Row {sheet_row_index})")
+        print(f"{'='*80}")
         
         try:
             owner, repo = user_repo.split('/')
@@ -807,14 +937,25 @@ def main():
             print(f"❌ Skipping: Invalid user/repo format in Column A: '{user_repo}'")
             continue
             
+        # Phase 1: Logical filtering
         relevant_prs, total_count = find_logically_relevant_prs(owner, repo)
         update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['total_prs'], total_count)
         update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['relevant_prs'], len(relevant_prs))
 
+        # Phase 2: Agentic analysis
         if relevant_prs:
             passed, agent_decisions = run_agentic_check_on_repo(relevant_prs, owner, repo)
             write_prs_to_csv(owner, repo, relevant_prs, agent_decisions, get_language_output_dir())
             update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['agentic_check'], "Yes" if passed else "No")
+            
+            # Final repository summary
+            good_prs = sum(1 for d in agent_decisions.values() if d.get('result') == 'Good PR')
+            print(f"\n🏁 FINAL RESULT for {user_repo}:")
+            print(f"   📊 Total PRs: {total_count}")
+            print(f"   ✅ Logically relevant: {len(relevant_prs)}")
+            print(f"   🤖 Analyzed by agent: {len(agent_decisions)}")
+            print(f"   🏆 Good PRs found: {good_prs}")
+            print(f"   🎯 Target met: {'YES' if passed else 'NO'}")
         else:
             print("⏭️ Skipping agentic check: No logically relevant PRs found.")
             update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['agentic_check'], "No")

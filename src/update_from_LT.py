@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 
 import requests
-from requests.exceptions import RequestException
 from termcolor import colored
-import sys
-import json
 import os
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-import time
 from datetime import datetime
 
 # --- Script Configuration ---
@@ -23,31 +19,74 @@ from config_utils import get_lt_token
 LT_TOKEN = get_lt_token()
 
 # --- Sheet Configuration ---
-# Configure which sheets to update and their corresponding project IDs
-from config_utils import get_project_id
+# Import centralized configuration functions
+from config_utils import (
+    get_all_language_configs
+)
 
-SHEETS_TO_UPDATE = {
-    'JS/TS': {
-        'project_id': get_project_id('javascript'),  # JavaScript project ID in labeling tool
-        'description': 'JavaScript/TypeScript repositories'
-    },
-    'Java': {
-        'project_id': get_project_id('java'),  # Java project ID in labeling tool
-        'description': 'Java repositories'
-    },
-    'Go': {
-        'project_id': get_project_id('go'),  # Go project ID in labeling tool
-        'description': 'Go repositories'
-    },
-    'Rust': {
-        'project_id': get_project_id('rust'),  # Rust project ID in labeling tool
-        'description': 'Rust repositories'
-    },
-    'C/C++': {
-        'project_id': get_project_id('cpp'),  # C/C++ project ID in labeling tool
-        'description': 'C/C++ repositories'
-    }
-}
+def get_sheets_to_update():
+    """
+    Dynamically generate sheets to update configuration from language_configs.json
+    
+    Returns:
+        Dictionary mapping sheet names to their configuration
+    """
+    try:
+        all_languages = get_all_language_configs()
+        sheets_config = {}
+        
+        for lang_name, lang_config in all_languages.items():
+            sheet_name = lang_config.get('sheet_name', '')
+            if sheet_name and sheet_name not in sheets_config:
+                # Get project ID from top level
+                project_id = lang_config.get('project_id')
+                if project_id:
+                    sheets_config[sheet_name] = {
+                        'project_id': project_id,
+                        'description': f'{lang_name} repositories'
+                    }
+                    # Log Python specifically to verify it's included
+                    if lang_name == 'Python':
+                        print(f"[Config] Python loaded: Sheet='{sheet_name}', Project ID={project_id}")
+        
+        return sheets_config
+    except (FileNotFoundError, KeyError) as e:
+        print(f"Warning: Could not load language configs, using fallback: {e}")
+        # Fallback configuration
+        return {
+            'Python': {
+                'project_id': 40,
+                'description': 'Python repositories'
+            },
+            'JS/TS': {
+                'project_id': 41,
+                'description': 'JavaScript/TypeScript repositories'
+            },
+            'Java': {
+                'project_id': 42,
+                'description': 'Java repositories'
+            },
+            'Go': {
+                'project_id': 43,
+                'description': 'Go repositories'
+            },
+            'C/C++': {
+                'project_id': 44,
+                'description': 'C/C++ repositories'
+            },
+            'Ruby': {
+                'project_id': 45,
+                'description': 'Ruby repositories'
+            },
+            'Rust': {
+                'project_id': 46,
+                'description': 'Rust repositories'
+            },
+            'C#': {
+                'project_id': 47,
+                'description': 'C# repositories'
+            }
+        }
 
 # --- Column Configuration ---
 # Define expected column headers and their default indices (0-based)
@@ -204,9 +243,113 @@ def fetch_all_batches_from_lt(project_id):
     print(f"[Labeling Tool] Found {len(batch_data)} batches with valid names")
     return batch_data
 
+def find_repository_batches(repo_key, batch_data):
+    """
+    Find all batches for a repository including parts (USER__REPO, USER__REPO_part_002, etc.)
+    
+    Args:
+        repo_key: Base repository key in USER__REPO format
+        batch_data: Dictionary of all batch data
+        
+    Returns:
+        List of batch objects that match the repository
+    """
+    matching_batches = []
+    
+    for batch_name, batch in batch_data.items():
+        if batch is None:
+            continue
+            
+        # Check for exact match or part match
+        if batch_name == repo_key or batch_name.startswith(f"{repo_key}_part_"):
+            matching_batches.append(batch)
+    
+    return matching_batches
+
+def aggregate_batch_data(batches):
+    """
+    Aggregate data from multiple repository batches.
+    
+    Args:
+        batches: List of batch objects to aggregate
+        
+    Returns:
+        Dictionary with aggregated data or None if no valid batches
+    """
+    if not batches:
+        return None
+    
+    # Use the first batch as the base (usually the main batch without _part_)
+    main_batch = batches[0]
+    
+    # Find the main batch (without _part_ suffix) if it exists
+    for batch in batches:
+        batch_name = batch.get("name", "")
+        if batch_name and "_part_" not in batch_name:
+            main_batch = batch
+            break
+    
+    # Initialize aggregated values
+    total_conversations = 0
+    total_improper = 0
+    earliest_date = None
+    batch_links = []
+    batch_names = []
+    
+    for batch in batches:
+        if batch is None:
+            continue
+            
+        batch_name = batch.get("name", "")
+        batch_id = batch.get("id")
+        
+        # Aggregate conversation counts
+        conversations = batch.get("countOfConversations", 0) or 0
+        total_conversations += conversations
+        
+        # Aggregate improper counts
+        batch_stats = batch.get("batchStats", {}) or {}
+        improper = batch_stats.get("improper", 0) if batch_stats else 0
+        total_improper += improper
+        
+        # Track earliest creation date
+        created_at = batch.get("createdAt")
+        if created_at:
+            try:
+                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                if earliest_date is None or dt < earliest_date:
+                    earliest_date = dt
+            except (ValueError, AttributeError):
+                pass
+        
+        # Collect batch information for linking
+        if batch_id:
+            batch_links.append(f"https://eval.turing.com/batches/{batch_id}/view")
+            batch_names.append(batch_name)
+    
+    # Create aggregated result
+    result = {
+        "id": main_batch.get("id"),  # Use main batch ID for primary link
+        "name": main_batch.get("name"),
+        "countOfConversations": total_conversations,
+        "batchStats": {"improper": total_improper},
+        "createdAt": main_batch.get("createdAt"),  # Use main batch creation date
+        "aggregated_stats": {
+            "total_batches": len(batches),
+            "batch_names": batch_names,
+            "batch_links": batch_links,
+            "earliest_date": earliest_date.isoformat() if earliest_date else None,
+            "total_conversations": total_conversations,
+            "total_improper": total_improper
+        }
+    }
+    
+    return result
+
 def update_sheet_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_indices, project_id):
     """
     Updates the sheet with data from the labeling tool for all repositories.
+    Now handles multiple batch parts and aggregates data from all parts.
     Updates columns O (Added), P (Tasks Count in LT), Q (Improper in LT), R (Batch link), and S (Addition Date).
     """
     print(f"\n=== Starting Labeling Tool Data Update for {sheet_name} (Project ID: {project_id}) ===")
@@ -269,37 +412,51 @@ def update_sheet_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_i
             current_added_status = row[added_col_0_idx].strip().lower()
 
             # Default: repo not found
-            repo_in_lt = None
+            aggregated_repo_data = None
 
-            # Try to find a match in LT if the repo name is valid
+            # Try to find all batches for this repository (including parts)
             if user_repo and '/' in user_repo:
                 lt_key = user_repo.replace('/', '__')
-                if lt_key in batch_data and batch_data[lt_key] is not None:
-                    repo_in_lt = batch_data[lt_key]
-                elif lt_key in batch_data:
-                    print(f"  Warning: Found None batch data for {lt_key}")
+                
+                # Find all batches for this repository
+                matching_batches = find_repository_batches(lt_key, batch_data)
+                
+                if matching_batches:
+                    # Aggregate data from all matching batches
+                    aggregated_repo_data = aggregate_batch_data(matching_batches)
+                    
+                    # Log the aggregation details
+                    if len(matching_batches) > 1:
+                        batch_names = [b.get("name", "Unknown") for b in matching_batches]
+                        print(f"  Found {len(matching_batches)} batches for {user_repo}: {', '.join(batch_names)}")
 
             # Apply rules based on "Added" column status
             if current_added_status == 'yes':
-                if repo_in_lt:
+                if aggregated_repo_data:
                     try:
                         # Rule 1: "Yes" row found -> Refresh counts and ensure batch link exists
-                        batch_id = repo_in_lt.get("id")
-                        batch_stats = repo_in_lt.get("batchStats", {}) or {}
-                        total_tasks = repo_in_lt.get("countOfConversations", 0) or 0
-                        improper_tasks = batch_stats.get("improper", 0) if batch_stats else 0
-                        batch_link = f"https://eval.turing.com/batches/{batch_id}/view" if batch_id else ""
+                        batch_id = aggregated_repo_data.get("id")
+                        aggregated_stats = aggregated_repo_data.get("aggregated_stats", {})
+                        total_tasks = aggregated_stats.get("total_conversations", 0)
+                        improper_tasks = aggregated_stats.get("total_improper", 0)
                         
-                        # Parse addition date from createdAt field
+                        # Create batch link - use main batch or show summary if multiple
+                        if batch_id:
+                            batch_link = f"https://eval.turing.com/batches/{batch_id}/view"
+                            if aggregated_stats.get("total_batches", 1) > 1:
+                                batch_link += f" ({aggregated_stats['total_batches']} parts)"
+                        else:
+                            batch_link = ""
+                        
+                        # Parse addition date from earliest date or main batch
                         addition_date = ""
-                        created_at = repo_in_lt.get("createdAt")
-                        if created_at:
+                        earliest_date_str = aggregated_stats.get("earliest_date")
+                        if earliest_date_str:
                             try:
-                                # Parse ISO format datetime and extract date only
-                                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                                dt = datetime.fromisoformat(earliest_date_str)
                                 addition_date = dt.strftime('%Y-%m-%d')
                             except (ValueError, AttributeError) as e:
-                                print(f"  Warning: Could not parse createdAt for {user_repo}: {created_at} - {e}")
+                                print(f"  Warning: Could not parse earliest date for {user_repo}: {earliest_date_str} - {e}")
                         
                         cell_updates.extend([
                             gspread.Cell(sheet_row, tasks_count_col_idx_1, total_tasks),
@@ -308,31 +465,41 @@ def update_sheet_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_i
                             gspread.Cell(sheet_row, addition_date_col_idx_1, addition_date),
                         ])
                         refreshed_count += 1
-                        print(f"  Refreshed counts and ensured batch link for existing repo in row {sheet_row}: {user_repo}")
+                        
+                        if aggregated_stats.get("total_batches", 1) > 1:
+                            print(f"  Refreshed aggregated data for {user_repo} in row {sheet_row}: {total_tasks} tasks from {aggregated_stats['total_batches']} batches")
+                        else:
+                            print(f"  Refreshed data for {user_repo} in row {sheet_row}: {total_tasks} tasks")
                     except Exception as e:
                         print(f"  Error processing existing repo {user_repo} in row {sheet_row}: {e}")
                 # else: Do nothing, as requested for "Yes" rows not found in LT
             
             else:  # Rule 2: "No" or empty "Added" column -> Perform full update
-                if repo_in_lt:
+                if aggregated_repo_data:
                     try:
                         # Full update for newly found repo
-                        batch_id = repo_in_lt.get("id")
-                        batch_stats = repo_in_lt.get("batchStats", {}) or {}
-                        total_tasks = repo_in_lt.get("countOfConversations", 0) or 0
-                        improper_tasks = batch_stats.get("improper", 0) if batch_stats else 0
-                        batch_link = f"https://eval.turing.com/batches/{batch_id}/view" if batch_id else ""
+                        batch_id = aggregated_repo_data.get("id")
+                        aggregated_stats = aggregated_repo_data.get("aggregated_stats", {})
+                        total_tasks = aggregated_stats.get("total_conversations", 0)
+                        improper_tasks = aggregated_stats.get("total_improper", 0)
                         
-                        # Parse addition date from createdAt field
+                        # Create batch link - use main batch or show summary if multiple
+                        if batch_id:
+                            batch_link = f"https://eval.turing.com/batches/{batch_id}/view"
+                            if aggregated_stats.get("total_batches", 1) > 1:
+                                batch_link += f" ({aggregated_stats['total_batches']} parts)"
+                        else:
+                            batch_link = ""
+                        
+                        # Parse addition date from earliest date or main batch
                         addition_date = ""
-                        created_at = repo_in_lt.get("createdAt")
-                        if created_at:
+                        earliest_date_str = aggregated_stats.get("earliest_date")
+                        if earliest_date_str:
                             try:
-                                # Parse ISO format datetime and extract date only
-                                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                                dt = datetime.fromisoformat(earliest_date_str)
                                 addition_date = dt.strftime('%Y-%m-%d')
                             except (ValueError, AttributeError) as e:
-                                print(f"  Warning: Could not parse createdAt for {user_repo}: {created_at} - {e}")
+                                print(f"  Warning: Could not parse earliest date for {user_repo}: {earliest_date_str} - {e}")
                         
                         cell_updates.extend([
                             gspread.Cell(sheet_row, added_col_idx_1, "Yes"),
@@ -342,7 +509,11 @@ def update_sheet_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_i
                             gspread.Cell(sheet_row, addition_date_col_idx_1, addition_date)
                         ])
                         updated_count += 1
-                        print(f"  Updated row {sheet_row}: Found {user_repo} in LT.")
+                        
+                        if aggregated_stats.get("total_batches", 1) > 1:
+                            print(f"  Updated row {sheet_row}: Found {user_repo} with {total_tasks} tasks from {aggregated_stats['total_batches']} batches in LT.")
+                        else:
+                            print(f"  Updated row {sheet_row}: Found {user_repo} with {total_tasks} tasks in LT.")
                     except Exception as e:
                         print(f"  Error processing new repo {user_repo} in row {sheet_row}: {e}")
                 else:
@@ -382,14 +553,16 @@ def print_configuration():
     """
     Prints the current configuration for easy reference.
     """
+    sheets_to_update = get_sheets_to_update()
+    
     print("=" * 80)
     print("UPDATE FROM LABELING TOOL CONFIGURATION")
     print("=" * 80)
     print(f"Spreadsheet Key: {SPREADSHEET_KEY}")
-    print(f"Sheets to Update: {len(SHEETS_TO_UPDATE)}")
+    print(f"Sheets to Update: {len(sheets_to_update)}")
     print("-" * 80)
     
-    for sheet_name, config in SHEETS_TO_UPDATE.items():
+    for sheet_name, config in sheets_to_update.items():
         print(f"Sheet: {sheet_name}")
         print(f"  Project ID: {config['project_id']}")
         print(f"  Description: {config['description']}")
@@ -413,8 +586,11 @@ def main():
     # Display configuration
     print_configuration()
     
+    # Get dynamic sheets configuration
+    sheets_to_update = get_sheets_to_update()
+    
     # Process each configured sheet
-    for sheet_name, config in SHEETS_TO_UPDATE.items():
+    for sheet_name, config in sheets_to_update.items():
         print(f"\n{'='*60}")
         print(f"Processing Sheet: {sheet_name}")
         print(f"{'='*60}")

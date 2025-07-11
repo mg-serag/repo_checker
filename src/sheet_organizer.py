@@ -10,7 +10,52 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from config_utils import (
     get_gspread_client,
     get_google_sheet,
+    get_all_language_configs,
+    get_language_sheet_name
 )
+
+def get_destination_sheet_for_language(language: str) -> str:
+    """
+    Get the destination sheet name for a given language using centralized config.
+    
+    Args:
+        language: Language name (e.g., 'Java', 'JavaScript', etc.)
+        
+    Returns:
+        Sheet name where the language should be placed
+    """
+    try:
+        return get_language_sheet_name(language)
+    except (KeyError, FileNotFoundError):
+        # Fallback to "Scrap" for unknown languages
+        return "Scrap"
+
+def get_all_language_sheet_names():
+    """
+    Get all unique sheet names from the language configuration.
+    
+    Returns:
+        Set of all sheet names configured for languages
+    """
+    try:
+        all_languages = get_all_language_configs()
+        sheet_names = set()
+        
+        for lang_name, lang_config in all_languages.items():
+            sheet_name = lang_config.get('sheet_name', '')
+            if sheet_name:
+                sheet_names.add(sheet_name)
+                # Log Python specifically to verify it's included
+                if lang_name == 'Python':
+                    print(f"[Config] Python sheet included: '{sheet_name}'")
+        
+        # Always include Scrap sheet
+        sheet_names.add("Scrap")
+        
+        return sheet_names
+    except (FileNotFoundError, KeyError):
+        # Fallback to basic set if config not available
+        return {"JS/TS", "Java", "Python", "C/C++", "Rust", "C#", "Go", "Ruby", "Scrap"}
 
 # Constants
 RATE_LIMIT_SLEEP_SEC = 60  # Wait 60 seconds when quota exceeded
@@ -31,27 +76,232 @@ def safe_gspread_call(func, *args, **kwargs):
     raise RuntimeError(f"Failed after {MAX_RETRIES} retries for gspread call {func.__name__}")
 
 
+def check_repo_exists_in_sheet(client, spreadsheet, sheet_name: str, repo_name: str) -> bool:
+    """
+    Check if a repository already exists in a specific sheet.
+    
+    Args:
+        client: gspread client
+        spreadsheet: gspread spreadsheet object
+        sheet_name: Name of the sheet to check
+        repo_name: Repository name to look for (Column A)
+        
+    Returns:
+        True if repository exists, False otherwise
+    """
+    try:
+        worksheet = spreadsheet.worksheet(sheet_name)
+        all_values = safe_gspread_call(worksheet.get_all_values)
+        
+        if len(all_values) <= 1:  # Only header or empty
+            return False
+        
+        # Check Column A (index 0) for the repository name
+        for row in all_values[1:]:  # Skip header
+            if row and row[0].strip().lower() == repo_name.strip().lower():
+                return True
+        
+        return False
+        
+    except Exception as e:
+        print(f"Error checking if {repo_name} exists in {sheet_name}: {e}")
+        return False
+
+
+def move_repo_to_sheet(client, spreadsheet, source_sheet: str, target_sheet: str, repo_row_data: list) -> bool:
+    """
+    Move a repository row from source sheet to target sheet.
+    
+    Args:
+        client: gspread client
+        spreadsheet: gspread spreadsheet object
+        source_sheet: Name of the source sheet
+        target_sheet: Name of the target sheet
+        repo_row_data: List containing the row data to move
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Get target worksheet
+        target_worksheet = spreadsheet.worksheet(target_sheet)
+        
+        # Append the row to the target sheet
+        safe_gspread_call(target_worksheet.append_row, repo_row_data)
+        print(f"Successfully moved {repo_row_data[0]} to {target_sheet}")
+        return True
+        
+    except Exception as e:
+        print(f"Error moving {repo_row_data[0] if repo_row_data else 'unknown repo'} to {target_sheet}: {e}")
+        return False
+
+
+def delete_repo_from_sheet(client, spreadsheet, sheet_name: str, repo_name: str) -> bool:
+    """
+    Delete a repository row from a specific sheet.
+    
+    Args:
+        client: gspread client
+        spreadsheet: gspread spreadsheet object
+        sheet_name: Name of the sheet to delete from
+        repo_name: Repository name to delete (Column A)
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        worksheet = spreadsheet.worksheet(sheet_name)
+        all_values = safe_gspread_call(worksheet.get_all_values)
+        
+        if len(all_values) <= 1:  # Only header or empty
+            return False
+        
+        # Find the row to delete
+        for row_idx, row in enumerate(all_values[1:], start=2):  # Start from row 2 (1-based)
+            if row and row[0].strip().lower() == repo_name.strip().lower():
+                safe_gspread_call(worksheet.delete_rows, row_idx)
+                print(f"Successfully deleted {repo_name} from {sheet_name}")
+                return True
+        
+        print(f"Repository {repo_name} not found in {sheet_name}")
+        return False
+        
+    except Exception as e:
+        print(f"Error deleting {repo_name} from {sheet_name}: {e}")
+        return False
+
+
+def process_single_repo_movement(client, spreadsheet, source_sheet: str, repo_name: str, majority_language: str) -> bool:
+    """
+    Process movement of a single repository based on its majority language.
+    
+    Args:
+        client: gspread client
+        spreadsheet: gspread spreadsheet object
+        source_sheet: Name of the source sheet
+        repo_name: Repository name to process
+        majority_language: The majority language detected for this repo
+        
+    Returns:
+        True if repo was moved or deleted, False if no action taken
+    """
+    target_sheet = get_destination_sheet_for_language(majority_language)
+    
+    # If the repo should stay in the same sheet, no action needed
+    if target_sheet == source_sheet:
+        return False
+    
+    print(f"Processing {repo_name}: {majority_language} -> {target_sheet}")
+    
+    # Check if repo already exists in target sheet
+    if check_repo_exists_in_sheet(client, spreadsheet, target_sheet, repo_name):
+        print(f"  {repo_name} already exists in {target_sheet}, deleting from {source_sheet}")
+        return delete_repo_from_sheet(client, spreadsheet, source_sheet, repo_name)
+    else:
+        # Get the row data from source sheet
+        try:
+            source_worksheet = spreadsheet.worksheet(source_sheet)
+            all_values = safe_gspread_call(source_worksheet.get_all_values)
+            
+            # Find the row to move
+            for row_idx, row in enumerate(all_values[1:], start=2):  # Start from row 2 (1-based)
+                if row and row[0].strip().lower() == repo_name.strip().lower():
+                    # Move the row to target sheet
+                    if move_repo_to_sheet(client, spreadsheet, source_sheet, target_sheet, row):
+                        # Delete from source sheet
+                        return delete_repo_from_sheet(client, spreadsheet, source_sheet, repo_name)
+                    break
+            
+            print(f"Repository {repo_name} not found in {source_sheet}")
+            return False
+            
+        except Exception as e:
+            print(f"Error processing movement for {repo_name}: {e}")
+            return False
+
+
+def remove_duplicates_within_sheet(client, spreadsheet, sheet_name):
+    """
+    Remove duplicate repositories within a single sheet.
+    Keeps the first occurrence and removes all subsequent duplicates.
+    Deletes from bottom to top to avoid index shifting issues.
+    
+    Args:
+        client: gspread client
+        spreadsheet: gspread spreadsheet object
+        sheet_name: Name of the sheet to check for duplicates
+        
+    Returns:
+        Number of duplicates removed
+    """
+    try:
+        worksheet = spreadsheet.worksheet(sheet_name)
+        
+        # Get all values from the sheet
+        all_values = safe_gspread_call(worksheet.get_all_values)
+        
+        if len(all_values) <= 1:  # Only header or empty
+            print(f"Sheet {sheet_name} has no data rows to check for duplicates")
+            return 0
+        
+        # Convert to DataFrame for easier duplicate detection
+        df = pd.DataFrame(all_values[1:], columns=all_values[0])
+        
+        if df.empty or len(df.columns) == 0:
+            print(f"Sheet {sheet_name} has no valid data to check for duplicates")
+            return 0
+        
+        # Check for duplicates in Column A (repository names)
+        repo_col = df.iloc[:, 0]  # First column (repository names)
+        
+        # Find duplicates - mark all occurrences except the first as True
+        duplicate_mask = repo_col.duplicated(keep='first')
+        
+        # Get indices of duplicate rows (convert to 1-based sheet row numbers)
+        duplicate_indices = []
+        for idx, is_duplicate in enumerate(duplicate_mask):
+            if is_duplicate:
+                sheet_row = idx + 2  # +2 because: +1 for header, +1 for 1-based indexing
+                repo_name = repo_col.iloc[idx]
+                duplicate_indices.append((sheet_row, repo_name))
+        
+        if not duplicate_indices:
+            print(f"No duplicates found in sheet {sheet_name}")
+            return 0
+        
+        print(f"Found {len(duplicate_indices)} duplicates in sheet {sheet_name}")
+        
+        # Sort indices in descending order to delete from bottom to top
+        duplicate_indices.sort(reverse=True)
+        
+        # Delete duplicate rows
+        deleted_count = 0
+        for sheet_row, repo_name in duplicate_indices:
+            try:
+                print(f"  Deleting duplicate: {repo_name} from row {sheet_row}")
+                safe_gspread_call(worksheet.delete_rows, sheet_row)
+                deleted_count += 1
+            except Exception as e:
+                print(f"  Error deleting duplicate {repo_name} from row {sheet_row}: {e}")
+        
+        print(f"Successfully removed {deleted_count} duplicates from sheet {sheet_name}")
+        return deleted_count
+        
+    except Exception as e:
+        print(f"Error removing duplicates from sheet {sheet_name}: {e}")
+        return 0
+
+
 def organize_sheets():
     """
     Organizes repositories in Google Sheets based on their majority language.
+    First removes duplicates within each sheet, then moves repos based on language.
     Uses DataFrames for all operations and minimizes sheet API calls.
     """
     print("Starting sheet organization process...")
 
     # Define the sheets we're working with
-    SHEETS = ["JS/TS", "Java", "C/C++", "Rust", "C#", "Go", "Scrap"]
-    
-    # Language to sheet mapping
-    LANGUAGE_TO_SHEET = {
-        "JavaScript": "JS/TS",
-        "TypeScript": "JS/TS", 
-        "Java": "Java",
-        "C": "C/C++",
-        "C++": "C/C++",
-        "Rust": "Rust",
-        "C#": "C#",
-        "Go": "Go"
-    }
+    SHEETS = get_all_language_sheet_names()
 
     try:
         # Get Google Sheets client and spreadsheet
@@ -60,7 +310,32 @@ def organize_sheets():
         
         print(f"Connected to spreadsheet: {spreadsheet.title}")
         
-        # Process each sheet
+        # STEP 1: Remove duplicates within each sheet first
+        print(f"\n{'='*60}")
+        print("STEP 1: REMOVING DUPLICATES WITHIN SHEETS")
+        print(f"{'='*60}")
+        
+        total_duplicates_removed = 0
+        for sheet_name in SHEETS:
+            if sheet_name == "Scrap":
+                continue  # Skip Scrap sheet for duplicate removal
+                
+            print(f"\nChecking for duplicates in sheet: {sheet_name}")
+            try:
+                duplicates_removed = remove_duplicates_within_sheet(client, spreadsheet, sheet_name)
+                total_duplicates_removed += duplicates_removed
+            except Exception as e:
+                print(f"Error checking duplicates in sheet {sheet_name}: {e}")
+                continue
+        
+        print(f"\n📊 DUPLICATE REMOVAL SUMMARY:")
+        print(f"   🗑️  Total duplicates removed: {total_duplicates_removed}")
+        
+        # STEP 2: Process each sheet for language-based organization
+        print(f"\n{'='*60}")
+        print("STEP 2: LANGUAGE-BASED ORGANIZATION")
+        print(f"{'='*60}")
+        
         for sheet_name in SHEETS:
             if sheet_name == "Scrap":
                 continue  # Skip Scrap sheet as source
@@ -103,7 +378,7 @@ def organize_sheets():
                 
                 # Process each language in this sheet
                 for language in unique_languages:
-                    destination_sheet = LANGUAGE_TO_SHEET.get(language, "Scrap")
+                    destination_sheet = get_destination_sheet_for_language(language)
                     
                     if destination_sheet == sheet_name:
                         print(f"  Language {language} already in correct sheet {sheet_name}. Skipping.")

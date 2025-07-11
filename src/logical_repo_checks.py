@@ -3,17 +3,13 @@
 import requests
 from requests.exceptions import RequestException
 from termcolor import colored
-import webbrowser
-import sys
 import json
 import os
-import random
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import time
 from datetime import datetime
-import concurrent.futures
 from typing import Dict
 
 # --- Script Configuration ---
@@ -24,12 +20,17 @@ SPREADSHEET_KEY = get_spreadsheet_key()
 
 # --- Language Configuration ---
 # Set the target language for evaluation
-TARGET_LANGUAGE = 'Rust'  # Options: 'Java', 'JavaScript', 'Python', 'Go', 'C/C++', 'Rust', 'C#'
+TARGET_LANGUAGE = 'JavaScript'  # Options: 'Java', 'JavaScript', 'Python', 'Go', 'C/C++', 'Rust', 'C#'
 
 # Language-specific configurations
 from config_utils import (
     get_language_config, get_language_sheet_name, get_language_evaluation_config,
-    get_language_target_language, get_project_id, get_language_evaluation_settings
+    get_language_target_language, get_project_id, get_language_evaluation_settings,
+    get_gspread_client, get_google_sheet
+)
+from sheet_organizer import (
+    get_destination_sheet_for_language, check_repo_exists_in_sheet, 
+    process_single_repo_movement
 )
 
 # Get current language configuration
@@ -630,6 +631,34 @@ def get_required_loc_for_stars(stars, loc_thresholds):
 
 
 
+def combine_js_ts_languages(language_percentages):
+    """
+    Combine JavaScript and TypeScript percentages as they should be treated as one language.
+    
+    Args:
+        language_percentages: Dictionary of language -> percentage
+        
+    Returns:
+        Updated language_percentages dict with combined JS/TS
+    """
+    js_percent = language_percentages.get('JavaScript', 0)
+    ts_percent = language_percentages.get('TypeScript', 0)
+    
+    if js_percent > 0 or ts_percent > 0:
+        combined_percent = js_percent + ts_percent
+        
+        # Remove individual JS/TS entries
+        language_percentages.pop('JavaScript', None)
+        language_percentages.pop('TypeScript', None)
+        
+        # Add combined entry using the more dominant language name, or JavaScript if equal
+        if ts_percent > js_percent:
+            language_percentages['TypeScript'] = combined_percent
+        else:
+            language_percentages['JavaScript'] = combined_percent
+    
+    return language_percentages
+
 def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, row_number=None):
     """
     Evaluates a single repository based on a set of criteria.
@@ -685,7 +714,7 @@ def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, ro
         print(f"=== Evaluation completed in {time.time() - start_time:.2f} seconds ===\n")
         return results
 
-    # 4. Language check (target language >= min_percentage%)
+    # 4. Language check - Always output majority language and its percentage
     languages_data = details['languages_data']
     total_bytes = sum(languages_data.values())
     if total_bytes == 0:
@@ -694,14 +723,20 @@ def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, ro
         return results
         
     language_percentages = {lang: (bytes / total_bytes) * 100 for lang, bytes in languages_data.items()}
+    
+    # Combine JavaScript and TypeScript percentages
+    language_percentages = combine_js_ts_languages(language_percentages)
+    
+    # Get the majority language (which might be combined JS/TS)
     primary_lang_name, primary_lang_percent = max(language_percentages.items(), key=lambda x: x[1])
     
-    # Check if the primary language matches our target language
+    # Check if the primary language matches our target language (for evaluation purposes)
     target_lang_percent = language_percentages.get(target_language, 0)
     
+    # Always output the majority language and its percentage
     results.update({
         'language_name': primary_lang_name,
-        'language_percent': target_lang_percent / 100,  # Store as decimal
+        'language_percent': primary_lang_percent / 100,  # Store as decimal
     })
     
     # 5. Star rating check (>= min_stars)
@@ -936,39 +971,327 @@ def print_column_configuration():
     print("=" * 80)
     print()
 
-# --- Dynamic Sheet Management ---
 
-def process_dynamic_checks(sheet_manager, source_sheet: str, column_indices: Dict[str, int], 
-                          existing_lt_repos: set) -> Dict[str, int]:
+
+# --- Repository Movement Logic ---
+
+def determine_missing_checks(row, column_indices) -> dict:
     """
-    Process dynamic checks and repository movement.
+    Determine which checks are missing based on existing data in the row.
     
     Args:
-        sheet_manager: DynamicSheetManager instance
-        source_sheet: Name of the source sheet
+        row: DataFrame row containing repository data
         column_indices: Column index mapping
-        existing_lt_repos: Set of existing repos in labeling tool
         
     Returns:
-        Dictionary with processing statistics
+        Dictionary indicating which checks need to be performed
     """
-    print(f"\n=== Processing Dynamic Checks for {source_sheet} ===")
-    
-    # 1. Process resume logic first (for rows with D, E, F but not G)
-    resume_stats = sheet_manager.process_resume_logic(source_sheet, column_indices, existing_lt_repos)
-    
-    # 2. Process dynamic movement (move repos to appropriate language sheets)
-    movement_stats = sheet_manager.process_dynamic_movement(source_sheet, column_indices, existing_lt_repos)
-    
-    # Combine statistics
-    total_stats = {
-        "resume_processed": resume_stats.get("processed", 0),
-        "resume_errors": resume_stats.get("errors", 0),
-        "moved": movement_stats.get("moved", 0),
-        "movement_errors": movement_stats.get("errors", 0)
+    checks_needed = {
+        'language_check': False,
+        'stars_check': False,
+        'loc_check': False,
+        'logical_check': False
     }
     
-    return total_stats
+    # Check if majority language (column D) is missing
+    majority_lang_col = f"col_{column_indices['majority_language']}"
+    if majority_lang_col in row.index:
+        lang_val = row[majority_lang_col]
+        if pd.isna(lang_val) or str(lang_val).strip() == '':
+            checks_needed['language_check'] = True
+    else:
+        checks_needed['language_check'] = True
+    
+    # Check if percentage (column E) is missing
+    percentage_col = f"col_{column_indices['percentage']}"
+    if percentage_col in row.index:
+        perc_val = row[percentage_col]
+        if pd.isna(perc_val) or str(perc_val).strip() == '':
+            checks_needed['language_check'] = True
+    else:
+        checks_needed['language_check'] = True
+    
+    # Check if stars (column F) is missing
+    stars_col = f"col_{column_indices['stars']}"
+    if stars_col in row.index:
+        stars_val = row[stars_col]
+        if pd.isna(stars_val) or str(stars_val).strip() == '':
+            checks_needed['stars_check'] = True
+    else:
+        checks_needed['stars_check'] = True
+    
+    # Check if LOC (column G) is missing
+    loc_col = f"col_{column_indices['loc']}"
+    if loc_col in row.index:
+        loc_val = row[loc_col]
+        if pd.isna(loc_val) or str(loc_val).strip() == '':
+            checks_needed['loc_check'] = True
+    else:
+        checks_needed['loc_check'] = True
+    
+    # Check if logical checks (column I) is missing
+    logical_col = f"col_{column_indices['logical_checks']}"
+    if logical_col in row.index:
+        logical_val = row[logical_col]
+        if pd.isna(logical_val) or str(logical_val).strip() == '':
+            checks_needed['logical_check'] = True
+    else:
+        checks_needed['logical_check'] = True
+    
+    return checks_needed
+
+
+def evaluate_repo_with_resume(user_repo, row, all_repos_df, column_indices, existing_lt_repos, row_number=None):
+    """
+    Evaluates a repository with resume logic - only performs missing checks.
+    
+    Args:
+        user_repo: Repository name in USER/REPO format
+        row: DataFrame row containing existing repository data
+        all_repos_df: Complete DataFrame for duplicate checking
+        column_indices: Column index mapping
+        existing_lt_repos: Set of existing repos in labeling tool
+        row_number: Row number for logging
+        
+    Returns:
+        Dictionary with evaluation results
+    """
+    start_time = time.time()
+    row_info = f" (Row {row_number})" if row_number else ""
+    
+    # Determine which checks are missing
+    missing_checks = determine_missing_checks(row, column_indices)
+    
+    print(f"\n=== Resume evaluation for {user_repo}{row_info} at {datetime.now().strftime('%H:%M:%S')} ===")
+    print(f"[Resume] Missing checks: {[k for k, v in missing_checks.items() if v]}")
+    
+    # Get evaluation settings for the target language
+    eval_settings = get_language_evaluation_settings(TARGET_LANGUAGE)
+    target_language = get_language_target_language(TARGET_LANGUAGE)
+    
+    results = {
+        'repo': user_repo, 'should_add': False, 'reason': "",
+        'language_name': "N/A", 'language_percent': 0, 'star_count': 0, 
+        'loc_count': "N/A", 'already_exists': "No", 'manual_review': False,
+    }
+    
+    # Pre-populate results with existing data
+    majority_lang_col = f"col_{column_indices['majority_language']}"
+    percentage_col = f"col_{column_indices['percentage']}"
+    stars_col = f"col_{column_indices['stars']}"
+    loc_col = f"col_{column_indices['loc']}"
+    already_exists_col = f"col_{column_indices['already_exists']}"
+    
+    if majority_lang_col in row.index and not pd.isna(row[majority_lang_col]) and str(row[majority_lang_col]).strip():
+        results['language_name'] = str(row[majority_lang_col]).strip()
+    
+    if percentage_col in row.index and not pd.isna(row[percentage_col]) and str(row[percentage_col]).strip():
+        try:
+            results['language_percent'] = float(row[percentage_col])
+        except ValueError:
+            pass
+    
+    if stars_col in row.index and not pd.isna(row[stars_col]) and str(row[stars_col]).strip():
+        try:
+            results['star_count'] = int(row[stars_col])
+        except ValueError:
+            pass
+    
+    if loc_col in row.index and not pd.isna(row[loc_col]) and str(row[loc_col]).strip():
+        results['loc_count'] = str(row[loc_col]).strip()
+    
+    if already_exists_col in row.index and not pd.isna(row[already_exists_col]) and str(row[already_exists_col]).strip():
+        results['already_exists'] = str(row[already_exists_col]).strip()
+    
+    # 1. Check if it already exists in the labeling tool (if not already checked)
+    if results['already_exists'].lower() != "yes":
+        if user_repo.lower() in existing_lt_repos:
+            results['reason'] = "Exists in Labeling Tool"
+            results['already_exists'] = "Yes"
+            print(f"=== Resume evaluation completed in {time.time() - start_time:.2f} seconds ===\n")
+            return results
+    
+    # 2. Check if it already exists in the sheet (if not already checked)
+    if results['already_exists'].lower() != "yes":
+        repo_url_col_name = f"col_{column_indices['repo_url']}"
+        added_col_name = f"col_{column_indices['added']}"
+        
+        if repo_url_col_name in all_repos_df.columns and added_col_name in all_repos_df.columns:
+            repo_url_lower = f"https://github.com/{user_repo}".lower()
+            normalized_urls = all_repos_df[repo_url_col_name].str.lower().str.strip()
+            matching_rows = all_repos_df[normalized_urls == repo_url_lower]
+            
+            if not matching_rows.empty:
+                if matching_rows[added_col_name].str.lower().eq('yes').any():
+                    results['reason'] = "Exists in Sheet"
+                    results['already_exists'] = "Yes"
+                    print(f"=== Resume evaluation completed in {time.time() - start_time:.2f} seconds ===\n")
+                    return results
+    
+    # 3. Perform language and stars check if missing
+    if missing_checks['language_check'] or missing_checks['stars_check']:
+        details = get_repo_details(user_repo)
+        if not details:
+            results['reason'] = 'Could not fetch repo details from GitHub API.'
+            print(f"=== Resume evaluation completed in {time.time() - start_time:.2f} seconds ===\n")
+            return results
+        
+        if missing_checks['language_check']:
+            # Language check - Always output majority language and its percentage
+            languages_data = details['languages_data']
+            total_bytes = sum(languages_data.values())
+            if total_bytes == 0:
+                results['reason'] = 'Repo appears to be empty (no code).'
+                print(f"=== Resume evaluation completed in {time.time() - start_time:.2f} seconds ===\n")
+                return results
+            
+            language_percentages = {lang: (bytes / total_bytes) * 100 for lang, bytes in languages_data.items()}
+            
+            # Combine JavaScript and TypeScript percentages
+            language_percentages = combine_js_ts_languages(language_percentages)
+            
+            # Get the majority language (which might be combined JS/TS)
+            primary_lang_name, primary_lang_percent = max(language_percentages.items(), key=lambda x: x[1])
+            
+            # Check if the primary language matches our target language (for evaluation purposes)
+            target_lang_percent = language_percentages.get(target_language, 0)
+            
+            # Always output the majority language and its percentage
+            results.update({
+                'language_name': primary_lang_name,
+                'language_percent': primary_lang_percent / 100,  # Store as decimal
+            })
+            
+            # Store both percentages for evaluation logic
+            results['_primary_lang_percent'] = primary_lang_percent
+            results['_target_lang_percent'] = target_lang_percent
+        
+        if missing_checks['stars_check']:
+            # Star rating check
+            stars = details['repo_data'].get('stargazers_count', 0)
+            results['star_count'] = stars
+    
+    # 4. Perform LOC check if missing
+    if missing_checks['loc_check']:
+        print(f"[LOC Check] Running LOC check for {user_repo}{row_info}")
+        lines = get_lines_count(user_repo)
+        
+        if lines is None:
+            results['loc_count'] = "ERROR"
+        elif lines == 0:
+            results['loc_count'] = "ERROR 0"
+        else:
+            results['loc_count'] = lines
+    
+    # 5. Perform logical check if missing
+    if missing_checks['logical_check']:
+        # Get current values for evaluation
+        primary_lang_percent = results.get('_primary_lang_percent', results['language_percent'] * 100 if isinstance(results['language_percent'], float) else 0)
+        target_lang_percent = results.get('_target_lang_percent', 0)
+        current_stars = results['star_count']
+        current_loc = results['loc_count']
+        
+        # Determine if LOC check passed
+        loc_check_passed = False
+        if isinstance(current_loc, int) and current_loc > 0:
+            primary_lang_eval_settings = get_language_evaluation_settings(results['language_name'])
+            required_loc = get_required_loc_for_stars(current_stars, primary_lang_eval_settings['loc_thresholds'])
+            loc_check_passed = current_loc >= required_loc
+        elif str(current_loc).upper().startswith("ERROR"):
+            # Manual review for LOC errors
+            results['manual_review'] = True
+        
+        # Final evaluation logic
+        primary_lang_eval_settings = get_language_evaluation_settings(results['language_name'])
+        
+        primary_lang_checks_passed = [
+            results['already_exists'] == "No",
+            primary_lang_percent >= primary_lang_eval_settings['min_percentage'],
+            current_stars >= primary_lang_eval_settings['min_stars'],
+            loc_check_passed
+        ]
+        
+        target_lang_checks_passed = [
+            results['already_exists'] == "No",
+            target_lang_percent >= eval_settings['min_percentage'],
+            current_stars >= eval_settings['min_stars'],
+            loc_check_passed
+        ]
+        
+        results['should_add'] = all(primary_lang_checks_passed) or all(target_lang_checks_passed)
+        
+        if results['manual_review']:
+            results['reason'] = "LOC check error – manual review required"
+        elif not results['should_add']:
+            reasons = []
+            if results['already_exists'] == "Yes": 
+                reasons.append("Exists in Labeling Tool/Sheet")
+            if target_lang_percent < eval_settings['min_percentage'] and primary_lang_percent < primary_lang_eval_settings['min_percentage']:
+                reasons.append(f"Language percentage too low (Target: {target_lang_percent:.2f}%, Primary: {primary_lang_percent:.2f}%)")
+            if current_stars < eval_settings['min_stars'] and current_stars < primary_lang_eval_settings['min_stars']:
+                reasons.append(f"Stars < {current_stars}")
+            if not loc_check_passed and isinstance(current_loc, int):
+                target_required_loc = get_required_loc_for_stars(current_stars, eval_settings['loc_thresholds'])
+                primary_required_loc = get_required_loc_for_stars(current_stars, primary_lang_eval_settings['loc_thresholds'])
+                required_loc = min(target_required_loc, primary_required_loc)
+                reasons.append(f"LOC < {required_loc:,}")
+            results['reason'] = ", ".join(reasons)
+        else:
+            if all(primary_lang_checks_passed) and not all(target_lang_checks_passed):
+                results['reason'] = f"Passed criteria for primary language ({results['language_name']})"
+            elif all(target_lang_checks_passed) and not all(primary_lang_checks_passed):
+                results['reason'] = f"Passed criteria for target language ({target_language})"
+            else:
+                results['reason'] = f"Passed criteria for both {results['language_name']} and {target_language}"
+    
+    # Clean up temporary storage variables
+    results.pop('_primary_lang_percent', None)
+    results.pop('_target_lang_percent', None)
+    
+    print(f"=== Resume evaluation completed in {time.time() - start_time:.2f} seconds ===\n")
+    return results
+
+
+def handle_repo_movement(user_repo: str, majority_language: str, current_sheet: str) -> bool:
+    """
+    Handle repository movement based on majority language.
+    
+    Args:
+        user_repo: Repository name in USER/REPO format
+        majority_language: The majority language detected for this repo
+        current_sheet: Current sheet name where the repo is located
+        
+    Returns:
+        True if repo was moved or deleted, False if no action taken
+    """
+    target_sheet = get_destination_sheet_for_language(majority_language)
+    
+    # If the repo should stay in the current sheet, no action needed
+    if target_sheet == current_sheet:
+        return False
+        
+    print(f"\n[Movement] Repository {user_repo} has majority language {majority_language}")
+    print(f"[Movement] Should move from {current_sheet} to {target_sheet}")
+    
+    try:
+        # Get Google Sheets client and spreadsheet
+        client = get_gspread_client()
+        spreadsheet = get_google_sheet(client)
+        
+        # Process the movement
+        moved = process_single_repo_movement(client, spreadsheet, current_sheet, user_repo, majority_language)
+        
+        if moved:
+            print(f"[Movement] Successfully processed {user_repo} movement")
+            return True
+        else:
+            print(f"[Movement] No action taken for {user_repo}")
+            return False
+            
+    except Exception as e:
+        print(f"[Movement] Error processing movement for {user_repo}: {e}")
+        return False
+
 
 # --- Main Execution ---
 
@@ -980,38 +1303,15 @@ def main():
     print("--- Starting Repository Evaluation ---")
     print(f"Target Language: {TARGET_LANGUAGE}")
     
-    # Import dynamic sheet manager
-    from dynamic_sheet_manager import create_sheet_manager
-    
     # 0. Display column configuration
     print_column_configuration()
     
-    # 1. Create dynamic sheet manager
-    sheet_manager = create_sheet_manager(CREDS_JSON_PATH, SPREADSHEET_KEY, SCOPE)
-    
-    # 2. Fetch existing repos from labeling tool
+    # 1. Fetch existing repos from labeling tool
     existing_lt_repos = fetch_existing_repos_from_lt()
     
-    # 3. Process dynamic checks and movement
-    print(f"\n=== Step 3: Processing Dynamic Checks ===")
-    # We need to get column indices first for dynamic processing
+    # 2. Fetch the updated list of potential repositories to evaluate
     try:
-        temp_df, temp_header = fetch_sheet_data(CREDS_JSON_PATH, SPREADSHEET_KEY, SCOPE, sheet_name=SHEET_NAME)
-        temp_column_indices = get_column_indices(temp_header)
-        dynamic_stats = process_dynamic_checks(sheet_manager, SHEET_NAME, temp_column_indices, existing_lt_repos)
-    except Exception as e:
-        print(colored(f"Error in dynamic processing: {e}", "red"))
-        dynamic_stats = {"resume_processed": 0, "resume_errors": 1, "moved": 0, "movement_errors": 0}
-    
-    print(f"Dynamic processing results:")
-    print(f"  - Resume processed: {dynamic_stats['resume_processed']}")
-    print(f"  - Resume errors: {dynamic_stats['resume_errors']}")
-    print(f"  - Repositories moved: {dynamic_stats['moved']}")
-    print(f"  - Movement errors: {dynamic_stats['movement_errors']}")
-    
-    # 4. Fetch the updated list of potential repositories to evaluate
-    try:
-        print(f"\n=== Step 4: Fetching Updated Repository List ===")
+        print(f"\n=== Step 2: Fetching Updated Repository List ===")
         print(f"Fetching potential repos from sheet: {SPREADSHEET_KEY} (Tab: {SHEET_NAME})")
         potential_repos_df, header = fetch_sheet_data(
             CREDS_JSON_PATH,
@@ -1027,18 +1327,18 @@ def main():
         print(colored(f"Error fetching potential repos sheet: {e}", "red"))
         return
 
-    # 5. Get column indices from header
+    # 3. Get column indices from header
     column_indices = get_column_indices(header)
     print(f"Column mapping: {column_indices}")
 
-    # 6. Update sheet with labeling tool data
-    print("\n=== Step 6: Updating Labeling Tool Data ===")
+    # 4. Update sheet with labeling tool data
+    print("\n=== Step 4: Updating Labeling Tool Data ===")
     update_data_from_LT(CREDS_JSON_PATH, SPREADSHEET_KEY, SCOPE, SHEET_NAME, column_indices)
 
-    # 7. Preprocess duplicates - mark all duplicate repositories except the first occurrence
+    # 5. Preprocess duplicates - mark all duplicate repositories except the first occurrence
     potential_repos_df = preprocess_duplicates(potential_repos_df, column_indices, existing_lt_repos)
 
-    # 8. Update sheet with duplicate markings
+    # 6. Update sheet with duplicate markings
     try:
         client = _get_gspread_client(CREDS_JSON_PATH, SCOPE)
         sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(SHEET_NAME)
@@ -1075,7 +1375,7 @@ def main():
     except Exception as e:
         print(colored(f"Error updating sheet with duplicate markings: {e}", "red"))
 
-    # 9. Resume Logic: Find rows that need processing
+    # 7. Resume Logic: Find rows that need processing
     # A row needs processing if 'Logical Checks' column is empty and URL is not empty.
     unprocessed_rows = []
     user_repo_col_idx = column_indices['user_repo']
@@ -1098,7 +1398,7 @@ def main():
         
     print(f"Found {len(unprocessed_rows)} unprocessed repositories to evaluate.")
 
-    # 10. Loop through and evaluate each unprocessed repository
+    # 8. Loop through and evaluate each unprocessed repository
     print("\n--- Evaluation Results ---")
     for index, row in unprocessed_rows:
         user_repo = row.iloc[column_indices['user_repo']].strip()
@@ -1107,7 +1407,15 @@ def main():
 
         try:
             if '/' in user_repo:
-                result = evaluate_repo(user_repo, potential_repos_df, column_indices, existing_lt_repos, row_number)
+                # Use the resume-aware evaluation that only performs missing checks
+                result = evaluate_repo_with_resume(user_repo, row, potential_repos_df, column_indices, existing_lt_repos, row_number)
+                
+                # Check if repo should be moved to a different sheet based on majority language
+                if result['language_name'] != "N/A":
+                    repo_moved = handle_repo_movement(user_repo, result['language_name'], SHEET_NAME)
+                    if repo_moved:
+                        print(colored(f"🔄 MOVED:     {result['repo']} (Row {row_number})", "cyan"), f"- Moved to {get_destination_sheet_for_language(result['language_name'])} sheet")
+                        continue  # Skip writing results since repo was moved
                 
                 # Print to console
                 if result['should_add']:
