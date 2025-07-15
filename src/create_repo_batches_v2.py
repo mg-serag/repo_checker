@@ -32,6 +32,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 import csv # Added for compare_prs_and_skip_if_identical
+from datetime import datetime
 
 # Token & config helpers
 from config_utils import (
@@ -47,18 +48,7 @@ from config_utils import (
 
 from convert import process_json_file
 
-# ---------------------------------------------------------------------------
-# Cache Management
-# ---------------------------------------------------------------------------
 
-def _clear_cache():
-    """Clear the entire cache to ensure fresh data."""
-    try:
-        with FanoutCache("cache") as cache:
-            cache.clear()
-        print("🧹 Cache cleared successfully")
-    except Exception as e:
-        print(f"⚠️ Warning: Could not clear cache: {e}")
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -76,20 +66,21 @@ TARGET_LANGUAGE = "JavaScript"
 # All: Upload all PRs found in the JSON file (only do deduplication step to remove PRs already in SWE Bench)
 # Good: Filter to include only Good PRs (PRs marked as "Good PR" in the PR reports)
 # Logical: Filter to include all PRs in the PR report whether the agent judged them as good or bad
-UPLOAD_MODE = 'All'  # Options: 'All', 'Good', 'Logical'
+UPLOAD_MODE = 'Logical'  # Options: 'All', 'Good', 'Logical'
 
 # Default count for spreadsheet repositories
-TARGET_REPO_COUNT = 3
+TARGET_REPO_COUNT = 5
+
+# Use manual repos or spreadsheet
+USE_MANUAL_REPOS = False  # Set to False to use spreadsheet
 
 # Manual repository list (only used if USE_MANUAL_REPOS = True)
 MANUAL_REPO_LIST = [
-    "Leaflet/Leaflet",
+    "apache/bookkeeper",
     # "user/repo1",
     # "user/repo2",
 ]
 
-# Use manual repos or spreadsheet
-USE_MANUAL_REPOS = False  # Set to False to use spreadsheet
 
 # Get language-specific configurations
 lang_config = get_language_config(TARGET_LANGUAGE)
@@ -120,6 +111,20 @@ try:
     print(f"✅ Created/verified CSV folder: {CSV_FOLDER}")
 except Exception as e:
     print(f"❌ ERROR creating CSV folder {CSV_FOLDER}: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Cache Management
+# ---------------------------------------------------------------------------
+
+def _clear_cache():
+    """Clear the entire cache to ensure fresh data."""
+    try:
+        with FanoutCache("cache") as cache:
+            cache.clear()
+        print("🧹 Cache cleared successfully")
+    except Exception as e:
+        print(f"⚠️ Warning: Could not clear cache: {e}")
 
 # ---------------------------------------------------------------------------
 # Data Processing Helpers
@@ -425,132 +430,91 @@ def _create_lt_batch(repo_name_safe: str, csv_path: str) -> str:
 
 def get_repos_from_sheet(sheet_name, creds_path, spreadsheet_key, target_count=10):
     """
-    Fetches repositories from a Google Sheet based on specified criteria.
-    Returns all qualifying repositories sorted by relevance.
+    Fetches repositories from a Google Sheet efficiently by loading all data at once.
     """
     global SPREADSHEET_DATA, SPREADSHEET_ROW_INDICES, SPREADSHEET_ADDED_COL_INDEX
     
     print(f"🔍 Fetching repositories from sheet: {sheet_name}")
-    print(f"   Target count: {target_count}")
     
     try:
-        # Setup authentication
+        # --- Authentication and Sheet Loading ---
         print("   🔐 Setting up authentication...")
         scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
         creds = Credentials.from_service_account_file(creds_path, scopes=scope)
         client = gspread.authorize(creds)
         
-        # Open spreadsheet and worksheet
         print("   📄 Opening spreadsheet...")
         spreadsheet = client.open_by_key(spreadsheet_key)
         sheet = spreadsheet.worksheet(sheet_name)
         
-        # Get sheet info for progress tracking
-        print("   📊 Getting sheet information...")
-        sheet_info = sheet.get_all_values()
-        total_rows = len(sheet_info)
-        print(f"   📈 Total rows in sheet: {total_rows}")
+        # --- Efficient Data Fetching ---
+        print("   📊 Fetching all sheet data at once...")
+        all_data = sheet.get_all_values()
         
-        if total_rows <= 1:  # Only header or empty
-            print("   ❌ Sheet appears to be empty or has only headers")
+        if len(all_data) <= 1:
+            print("   ❌ Sheet is empty or has only a header.")
             return []
+
+        # --- DataFrame Processing ---
+        header = all_data[0]
+        df = pd.DataFrame(all_data[1:], columns=header)
+        # Adjust index to match sheet row numbers (1-based index, plus header row)
+        df.index = df.index + 2
         
-        # Get headers first to understand structure
-        headers = sheet_info[0]
-        print(f"   📋 Sheet columns: {headers}")
+        print(f"   📈 Loaded {len(df)} rows into DataFrame.")
         
-        # Find required column indices
+        # --- Column and Data Validation ---
         required_columns = ['Repository', 'Good PRs > 2', 'Added', 'Relevant PRs count']
-        column_indices = {}
-        
         for col in required_columns:
-            if col in headers:
-                column_indices[col] = headers.index(col)
-            else:
-                print(f"   ⚠️ Warning: Column '{col}' not found in sheet")
-                print(f"   Available columns: {headers}")
+            if col not in df.columns:
+                print(f"   ⚠️ Warning: Column '{col}' not found in sheet.")
+                print(f"   Available columns: {list(df.columns)}")
                 return []
         
-        # Cache the added column index for later updates
-        SPREADSHEET_ADDED_COL_INDEX = column_indices['Added'] + 1  # Convert to 1-indexed
+        print("   ✅ All required columns found.")
         
-        print("   ✅ All required columns found")
+        # --- Filtering and Sorting ---
+        print("   🔍 Filtering repositories...")
+        qualifying_df = df[(df['Good PRs > 2'] == 'Yes') & (df['Added'] == 'No')].copy()
         
-        # Process data in batches for efficiency
-        print("   🔄 Processing data...")
-        qualifying_repos = []
-        qualifying_row_indices = []  # Store row indices for efficient updates
+        print(f"   📊 Found {len(qualifying_df)} qualifying repositories.")
         
-        # Process rows in batches (excluding header)
-        batch_size = 100
-        for i in range(1, total_rows, batch_size):
-            end_row = min(i + batch_size, total_rows)
-            print(f"   📝 Processing rows {i}-{end_row-1} of {total_rows-1}...")
-            
-            # Get batch of rows
-            batch_range = f"A{i}:Z{end_row}"
-            batch_data = sheet.get(batch_range)
-            
-            for row_idx, row in enumerate(batch_data):
-                if len(row) < max(column_indices.values()) + 1:
-                    continue  # Skip incomplete rows
-                
-                try:
-                    repo = row[column_indices['Repository']]
-                    good_prs = row[column_indices['Good PRs > 2']]
-                    added = row[column_indices['Added']]
-                    relevant_count = row[column_indices['Relevant PRs count']]
-                    
-                    # Check criteria
-                    if (good_prs == 'Yes' and added == 'No'):
-                        # Convert relevant count to int for sorting
-                        try:
-                            relevant_count_int = int(relevant_count) if relevant_count else 0
-                        except (ValueError, TypeError):
-                            relevant_count_int = 0
-                        
-                        qualifying_repos.append({
-                            'repository': repo,
-                            'relevant_count': relevant_count_int,
-                            'row_data': row
-                        })
-                        # Store the actual row index (1-indexed, including header)
-                        qualifying_row_indices.append(i + row_idx + 1)
-                        
-                except (IndexError, KeyError) as e:
-                    print(f"   ⚠️ Skipping malformed row {row_idx + i}: {e}")
-                    continue
-        
-        print(f"   📊 Found {len(qualifying_repos)} qualifying repositories")
-        
-        if len(qualifying_repos) == 0:
-            print("   ❌ No repositories found matching criteria!")
+        if qualifying_df.empty:
             return []
+
+        # Convert 'Relevant PRs count' to numeric for sorting, handling errors
+        qualifying_df['relevant_count_numeric'] = pd.to_numeric(
+            qualifying_df['Relevant PRs count'], errors='coerce'
+        ).fillna(0).astype(int)
         
-        # Sort by relevant count (descending)
-        qualifying_repos.sort(key=lambda x: x['relevant_count'], reverse=True)
+        # Sort by relevance (descending)
+        qualifying_df = qualifying_df.sort_values(by='relevant_count_numeric', ascending=False)
         
-        # Extract repository names
-        all_repos = [repo['repository'] for repo in qualifying_repos]
+        # --- Cache Data for Updates ---
+        all_repos = qualifying_df['Repository'].tolist()
+        qualifying_row_indices = qualifying_df.index.tolist()
         
-        # Cache spreadsheet data and row indices for efficient updates
+        # Cache the 'Added' column index (1-based) for later updates
+        SPREADSHEET_ADDED_COL_INDEX = header.index('Added') + 1
+        
         SPREADSHEET_DATA = {
             'repos': all_repos,
             'row_indices': qualifying_row_indices,
             'sheet': sheet
         }
         
-        print(f"   ✅ Successfully processed {len(all_repos)} qualifying repositories")
-        print(f"   🎯 Target count: {target_count}")
+        print(f"   ✅ Successfully processed {len(all_repos)} qualifying repositories.")
         
-        # Show top repositories
+        # --- Display Top Repositories ---
         print("   📋 Top qualifying repositories:")
-        for i, repo in enumerate(all_repos[:min(10, len(all_repos))], 1):
-            repo_data = next(r for r in qualifying_repos if r['repository'] == repo)
-            print(f"     {i}. {repo} (Relevant PRs: {repo_data['relevant_count']})")
+        top_n = min(10, len(all_repos))
+        for i in range(top_n):
+            repo_name = qualifying_df.iloc[i]['Repository']
+            relevant_count = qualifying_df.iloc[i]['relevant_count_numeric']
+            print(f"     {i+1}. {repo_name} (Relevant PRs: {relevant_count})")
         
-        if len(all_repos) > 10:
-            print(f"     ... and {len(all_repos) - 10} more")
+        if len(all_repos) > top_n:
+            print(f"     ... and {len(all_repos) - top_n} more")
         
         return all_repos
         
@@ -859,12 +823,26 @@ def compare_prs_and_skip_if_identical(repo_name, csv_path, project_id):
 
 def _process_single_repo(repo: str, upload_mode: str = 'Good'):
     repo_safe = repo.replace("/", "__")
+    
+    # Initialize tracking variables
+    initial_pr_count = 0
+    final_pr_count = 0
+    uploaded_pr_count = 0
+    error_message = ""
 
     # 1. Job handling
     job_id = _get_job_id(repo_safe) or _start_job(repo_safe)
     if not job_id:
         print(f"❌ Could not start job for {repo}")
-        return "failed"
+        error_message = "Could not start SWE-Bench job"
+        return {
+            'status': 'failed',
+            'initial_pr_count': initial_pr_count,
+            'final_pr_count': final_pr_count,
+            'uploaded_pr_count': uploaded_pr_count,
+            'error_message': error_message,
+            'pr_stats': {}
+        }
 
     # 2. Wait for completion
     while True:
@@ -874,7 +852,15 @@ def _process_single_repo(repo: str, upload_mode: str = 'Good'):
             break
         if status in {"FAILED", "CANCELLED"}:
             print(f"❌ Job failed for {repo}")
-            return "failed"
+            error_message = f"SWE-Bench job failed with status: {status}"
+            return {
+                'status': 'failed',
+                'initial_pr_count': initial_pr_count,
+                'final_pr_count': final_pr_count,
+                'uploaded_pr_count': uploaded_pr_count,
+                'error_message': error_message,
+                'pr_stats': {}
+            }
         time.sleep(10)
 
     # Add delay after job completion to ensure webpage data is loaded
@@ -884,7 +870,18 @@ def _process_single_repo(repo: str, upload_mode: str = 'Good'):
     pr_rows = _get_pr_rows_via_web(repo_safe)
     if not pr_rows:
         print(f"❌ No PR data found for {repo}")
-        return "failed"
+        error_message = "No PR data found in SWE-Bench"
+        return {
+            'status': 'failed',
+            'initial_pr_count': initial_pr_count,
+            'final_pr_count': final_pr_count,
+            'uploaded_pr_count': uploaded_pr_count,
+            'error_message': error_message,
+            'pr_stats': {}
+        }
+    
+    # Track initial PR count
+    initial_pr_count = len(pr_rows)
 
     # Process PR data to ensure all required fields are present
     print(f"🔧 Processing PR data to add missing fields...")
@@ -902,7 +899,15 @@ def _process_single_repo(repo: str, upload_mode: str = 'Good'):
         
     except Exception as e:
         print(f"❌ ERROR: Failed to save JSON file {json_path}: {e}")
-        return "failed"
+        error_message = f"Failed to save JSON file: {e}"
+        return {
+            'status': 'failed',
+            'initial_pr_count': initial_pr_count,
+            'final_pr_count': final_pr_count,
+            'uploaded_pr_count': uploaded_pr_count,
+            'error_message': error_message,
+            'pr_stats': {}
+        }
 
     # 5. Convert to CSV using updated signature
     csv_path = os.path.abspath(os.path.join(CSV_FOLDER, f"{repo_safe}_pr_data.csv"))
@@ -913,28 +918,58 @@ def _process_single_repo(repo: str, upload_mode: str = 'Good'):
             output_file=csv_path,
             existing_repos=set(),
             force=False,
-            base_dir=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),  # Root directory (parent of src)
+            base_dir=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             language=TARGET_LANGUAGE,
             upload_mode=upload_mode,
         )
         print(f"✅ process_json_file completed successfully")
-        if isinstance(result, dict):
-            print(f"📊 Result: {result}")
-            final_count = result.get('final_pr_count', 0)
-            if final_count == 0:
-                print(f"⚠️ No usable PRs found for {repo} after filtering")
-                print(f"   This could be due to:")
-                print(f"   - All PRs were filtered out by date")
-                print(f"   - All PRs were filtered out by {upload_mode} mode filtering")
-                print(f"   - All PRs were already in labeling tool")
-                print(f"   - All PRs were already in local files")
-                return "no_prs"  # Return status indicating no usable PRs
+        
+        # This check is crucial to handle both old and new return types
+        if not isinstance(result, dict) or not result.get('success'):
+             error_message = f"process_json_file returned an unexpected value or failed: {result}"
+             print(f"❌ {error_message}")
+             return {
+                'status': 'failed',
+                'initial_pr_count': initial_pr_count,
+                'final_pr_count': 0,
+                'uploaded_pr_count': 0,
+                'error_message': error_message,
+                'pr_stats': {}
+             }
+
+        print(f"📊 Result: {json.dumps(result, indent=2)}")
+        final_pr_count = result.get('final_pr_count', 0)
+        
+        if final_pr_count == 0:
+            print(f"⚠️ No usable PRs found for {repo} after filtering.")
+            print(f"   This could be due to:")
+            print(f"   - All PRs were filtered out by date")
+            print(f"   - All PRs were filtered out by {upload_mode} mode filtering")
+            print(f"   - All PRs were already in labeling tool")
+            print(f"   - All PRs were already in local files")
+            return {
+                'status': 'no_prs',
+                'initial_pr_count': initial_pr_count,
+                'final_pr_count': 0,
+                'uploaded_pr_count': 0,
+                'error_message': "No usable PRs after filtering",
+                'pr_stats': result  # Pass stats even for no_prs
+            }
+
     except Exception as e:
         print(f"❌ ERROR in process_json_file: {e}")
         import traceback
         traceback.print_exc()
-        return "failed"
-
+        error_message = f"Error in process_json_file: {e}"
+        return {
+            'status': 'failed',
+            'initial_pr_count': initial_pr_count,
+            'final_pr_count': 0,
+            'uploaded_pr_count': 0,
+            'error_message': error_message,
+            'pr_stats': {} # Return empty stats on failure
+        }
+    
     # 6. Check if repository already exists in LT and compare PRs
     exists_in_lt, existing_repo_name = check_repo_exists_in_lt(repo, PROJECT_ID)
     
@@ -949,7 +984,14 @@ def _process_single_repo(repo: str, upload_mode: str = 'Good'):
             # Update spreadsheet to mark as added
             sheet_name = get_language_sheet_name(TARGET_LANGUAGE)
             update_spreadsheet_repo_status(sheet_name, repo, "Yes")
-            return "skipped"  # Return status indicating skipped due to existing PRs
+            return {
+                'status': 'skipped',
+                'initial_pr_count': initial_pr_count,
+                'final_pr_count': final_pr_count,
+                'uploaded_pr_count': uploaded_pr_count,
+                'error_message': "All PRs already exist in labeling tool",
+                'pr_stats': result  # Pass the full stats dictionary
+            }
         else:
             print(f"✅ Proceeding with upload for {repo} - new PRs found")
 
@@ -957,13 +999,155 @@ def _process_single_repo(repo: str, upload_mode: str = 'Good'):
     batch_url = _create_lt_batch(repo_safe, csv_path)
     print(f"✅ Batch created: {batch_url}")
     
+    # Track uploaded PR count
+    uploaded_pr_count = final_pr_count
+    
     # 8. Update spreadsheet to mark as added
     sheet_name = get_language_sheet_name(TARGET_LANGUAGE)
     update_spreadsheet_repo_status(sheet_name, repo, "Yes")
     print(f"📝 Updated spreadsheet status for {repo}")
     print()
     
-    return "success"  # Return status indicating successful upload
+    return {
+        'status': 'success',
+        'initial_pr_count': initial_pr_count,
+        'final_pr_count': final_pr_count,
+        'uploaded_pr_count': uploaded_pr_count,
+        'error_message': "",
+        'pr_stats': result  # Pass the full stats dictionary
+    }
+
+# ---------------------------------------------------------------------------
+# Processing Report Functions
+# ---------------------------------------------------------------------------
+
+def create_processing_report(processing_stats, base_dir):
+    """Create a comprehensive CSV report of processing statistics for batch creation."""
+    if not processing_stats:
+        return
+    
+    # Create processing_reports directory if it doesn't exist
+    reports_dir = os.path.join(base_dir, "processing_reports")
+    os.makedirs(reports_dir, exist_ok=True)
+    
+    # Generate ISO timestamp for filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_filename = f"batch_processing_report_{timestamp}.csv"
+    report_path = os.path.join(reports_dir, report_filename)
+    
+    # Calculate summary statistics
+    total_repos = len(processing_stats)
+    successful_repos = sum(1 for stat in processing_stats if stat.get('status') == 'success')
+    failed_repos = sum(1 for stat in processing_stats if stat.get('status') == 'failed')
+    skipped_repos = sum(1 for stat in processing_stats if stat.get('status') == 'skipped')
+    no_prs_repos = sum(1 for stat in processing_stats if stat.get('status') == 'no_prs')
+    
+    # Calculate PR statistics
+    total_initial_prs = sum(stat.get('initial_pr_count', 0) for stat in processing_stats)
+    total_final_prs = sum(stat.get('final_pr_count', 0) for stat in processing_stats)
+    total_uploaded_prs = sum(stat.get('uploaded_pr_count', 0) for stat in processing_stats)
+    
+    # Count repositories with no usable PRs
+    repos_with_no_prs = sum(1 for stat in processing_stats if stat.get('final_pr_count', 0) == 0)
+    
+    # New detailed totals
+    total_pr_total = sum(stat.get('pr_total', 0) for stat in processing_stats)
+    total_prs_after_merge_date = sum(stat.get('prs_after_merge_date', 0) for stat in processing_stats)
+    total_prs_logical = sum(stat.get('prs_logical', 0) for stat in processing_stats)
+    total_prs_good = sum(stat.get('prs_good', 0) for stat in processing_stats)
+    total_prs_uploaded_detail = sum(stat.get('prs_uploaded', 0) for stat in processing_stats)
+    total_prs_missing = sum(stat.get('prs_missing', 0) for stat in processing_stats)
+    
+    # Write the report
+    with open(report_path, 'w', newline='', encoding='utf-8') as csv_file:
+        writer = csv.writer(csv_file)
+        
+        # Write summary header
+        writer.writerow(['BATCH PROCESSING SUMMARY REPORT'])
+        writer.writerow([f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'])
+        writer.writerow([f'Target Language: {TARGET_LANGUAGE}'])
+        writer.writerow([f'Project ID: {PROJECT_ID}'])
+        writer.writerow([f'Upload Mode: {UPLOAD_MODE}'])
+        writer.writerow([f'Total Repositories Processed: {total_repos}'])
+        writer.writerow([f'Successful Uploads: {successful_repos}'])
+        writer.writerow([f'Failed: {failed_repos}'])
+        writer.writerow([f'Skipped (already in LT): {skipped_repos}'])
+        writer.writerow([f'Skipped (no usable PRs): {no_prs_repos}'])
+        writer.writerow([f'Repositories with No Usable PRs: {repos_with_no_prs}'])
+        writer.writerow([])
+        
+        # Write totals
+        writer.writerow(['TOTALS ACROSS ALL REPOSITORIES'])
+        writer.writerow(['PR Total', 'PRs After Merge Date', 'PRs Logical', 'PRs Good', 'PRs Uploaded', 'PRs Missing'])
+        writer.writerow([total_pr_total, total_prs_after_merge_date, total_prs_logical, total_prs_good, total_prs_uploaded_detail, total_prs_missing])
+        writer.writerow([])
+        
+        # Write detailed repository data
+        writer.writerow(['DETAILED REPOSITORY STATISTICS'])
+        writer.writerow(['Repository', 'Status', 
+                       'PR Total', 'PRs After Merge Date', 'PRs Logical', 'PRs Good', 
+                       'PRs Uploaded', 'PRs Missing', 'PRs Missing IDs', 
+                       'Error Message'])
+        
+        for stat in processing_stats:
+            writer.writerow([
+                stat.get('repository', 'Unknown'),
+                stat.get('status', 'Unknown'),
+                stat.get('pr_total', 0),
+                stat.get('prs_after_merge_date', 0),
+                stat.get('prs_logical', 0),
+                stat.get('prs_good', 0),
+                stat.get('prs_uploaded', 0),
+                stat.get('prs_missing', 0),
+                stat.get('prs_missing_ids', ''),
+                stat.get('error_message', '')
+            ])
+    
+    print(f"\n📊 Batch processing report saved to: {report_path}")
+    print(f"📈 Summary: {successful_repos}/{total_repos} repositories processed successfully")
+    print(f"📊 Total PRs: {total_initial_prs} → {total_final_prs} (final) → {total_uploaded_prs} (uploaded)")
+    print(f"⚠️ Repositories with no usable PRs: {repos_with_no_prs}")
+    
+    return report_path
+
+def track_repo_processing_stats(repo_name, status, initial_pr_count=0, final_pr_count=0, uploaded_pr_count=0, error_message="", pr_stats=None):
+    """Track processing statistics for a single repository, including detailed PR counts."""
+    
+    # Initialize base stats
+    stats = {
+        'repository': repo_name,
+        'status': status,
+        'initial_pr_count': initial_pr_count,
+        'final_pr_count': final_pr_count,
+        'uploaded_pr_count': uploaded_pr_count,
+        'error_message': error_message,
+        # New detailed stats
+        'pr_total': 0,
+        'prs_after_merge_date': 0,
+        'prs_logical': 0,
+        'prs_good': 0,
+        'prs_uploaded': 0,
+        'prs_missing': 0,
+        'prs_missing_ids': ""
+    }
+    
+    # If detailed stats are provided, update the dictionary
+    if pr_stats and isinstance(pr_stats, dict):
+        stats.update({
+            'pr_total': pr_stats.get('initial_pr_count', 0),
+            'prs_after_merge_date': pr_stats.get('after_date_filter_count', 0),
+            'prs_logical': pr_stats.get('logical_pr_count', 0),
+            'prs_good': pr_stats.get('good_pr_count', 0),
+            'prs_uploaded': pr_stats.get('uploaded_pr_count', 0),
+            'prs_missing': len(pr_stats.get('missing_pr_ids', [])),
+            'prs_missing_ids': ", ".join(map(str, pr_stats.get('missing_pr_ids', [])))
+        })
+        # Ensure consistency
+        stats['initial_pr_count'] = pr_stats.get('initial_pr_count', initial_pr_count)
+        stats['final_pr_count'] = pr_stats.get('final_pr_count', final_pr_count)
+        stats['uploaded_pr_count'] = pr_stats.get('uploaded_pr_count', uploaded_pr_count)
+
+    return stats
 
 # ---------------------------------------------------------------------------
 # Main entry
@@ -1013,6 +1197,7 @@ def main():
     failed_count = 0
     skipped_count = 0
     no_prs_count = 0
+    processing_stats = []  # Track detailed statistics
     
     for i, repo in enumerate(repo_list, 1):
         print(f"\n--- Processing {i}/{len(repo_list)}: {repo} ---")
@@ -1029,22 +1214,38 @@ def main():
                 update_spreadsheet_repo_status(sheet_name, repo, "Yes")
                 skipped_count += 1
                 print(f"   Skipped count: {skipped_count}")
+                
+                # Track statistics for skipped repos
+                processing_stats.append(track_repo_processing_stats(
+                    repo, 'skipped', 0, 0, 0, "Repository already exists in labeling tool"
+                ))
                 continue
 
-            status = _process_single_repo(repo, UPLOAD_MODE)
+            result = _process_single_repo(repo, UPLOAD_MODE)
             
-            if status == "success":
+            # Track statistics
+            processing_stats.append({
+                'repository': repo,
+                'status': result['status'],
+                'initial_pr_count': result['initial_pr_count'],
+                'final_pr_count': result['final_pr_count'],
+                'uploaded_pr_count': result['uploaded_pr_count'],
+                'error_message': result['error_message'],
+                'pr_stats': result['pr_stats'] # Include detailed stats
+            })
+            
+            if result['status'] == "success":
                 successful_count += 1
                 print(f"✅ Successfully processed {repo} ({successful_count}/{TARGET_REPO_COUNT})")
                 
                 if successful_count >= TARGET_REPO_COUNT:
                     print(f"🎯 Reached target count of {TARGET_REPO_COUNT}. Stopping.")
                     break
-            elif status == "no_prs":
+            elif result['status'] == "no_prs":
                 print(f"⚠️ No usable PRs found for {repo}. Skipping upload.")
                 no_prs_count += 1
                 print(f"   No PRs count: {no_prs_count}")
-            elif status == "skipped":
+            elif result['status'] == "skipped":
                 print(f"⏭️ Skipped {repo} - all PRs already exist in LT")
                 skipped_count += 1
                 print(f"   Skipped count: {skipped_count}")
@@ -1057,6 +1258,11 @@ def main():
             failed_count += 1
             print(f"❌ Unexpected error processing {repo}: {exc}")
             print(f"   Failed count: {failed_count}")
+            
+            # Track statistics for unexpected errors
+            processing_stats.append(track_repo_processing_stats(
+                repo, 'failed', 0, 0, 0, f"Unexpected error: {exc}"
+            ))
 
     # Final summary
     print("\n" + "=" * 50)
@@ -1081,6 +1287,11 @@ def main():
         print(f"⏸️ STOPPED: Processing interrupted or stopped early.")
     
     print("=" * 50)
+    
+    # Generate processing report
+    if processing_stats:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Root directory (parent of src)
+        create_processing_report(processing_stats, base_dir)
 
 if __name__ == "__main__":
     main() 

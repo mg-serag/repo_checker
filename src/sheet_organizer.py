@@ -45,9 +45,6 @@ def get_all_language_sheet_names():
             sheet_name = lang_config.get('sheet_name', '')
             if sheet_name:
                 sheet_names.add(sheet_name)
-                # Log Python specifically to verify it's included
-                if lang_name == 'Python':
-                    print(f"[Config] Python sheet included: '{sheet_name}'")
         
         # Always include Scrap sheet
         sheet_names.add("Scrap")
@@ -111,6 +108,8 @@ def check_repo_exists_in_sheet(client, spreadsheet, sheet_name: str, repo_name: 
 def move_repo_to_sheet(client, spreadsheet, source_sheet: str, target_sheet: str, repo_row_data: list) -> bool:
     """
     Move a repository row from source sheet to target sheet.
+    Inserts the repository at the first row where both Repository (Column A) and 
+    Actual Link (Column C) are empty.
     
     Args:
         client: gspread client
@@ -126,13 +125,81 @@ def move_repo_to_sheet(client, spreadsheet, source_sheet: str, target_sheet: str
         # Get target worksheet
         target_worksheet = spreadsheet.worksheet(target_sheet)
         
-        # Append the row to the target sheet
-        safe_gspread_call(target_worksheet.append_row, repo_row_data)
-        print(f"Successfully moved {repo_row_data[0]} to {target_sheet}")
+        # Get all values from target sheet
+        all_values = safe_gspread_call(target_worksheet.get_all_values)
+        
+        # Find the first row with empty Repository (Column A) and Actual Link (Column C)
+        insert_row = None
+        for row_idx, row in enumerate(all_values):
+            # Check if Repository (Column A) and Actual Link (Column C) are empty
+            repo_empty = len(row) <= 0 or not row[0].strip()
+            link_empty = len(row) <= 2 or not row[2].strip()
+            
+            if repo_empty and link_empty:
+                insert_row = row_idx + 1  # Convert to 1-based sheet row number
+                break
+        
+        # If no empty row found, append to the end
+        if insert_row is None:
+            insert_row = len(all_values) + 1
+        
+        # Insert the row at the found position
+        safe_gspread_call(target_worksheet.insert_row, repo_row_data, insert_row)
+        print(f"Successfully moved {repo_row_data[0]} to {target_sheet} at row {insert_row}")
         return True
         
     except Exception as e:
         print(f"Error moving {repo_row_data[0] if repo_row_data else 'unknown repo'} to {target_sheet}: {e}")
+        return False
+
+
+def bulk_insert_rows_at_first_empty(client, spreadsheet, target_sheet: str, rows_to_insert: list) -> bool:
+    """
+    Bulk insert rows at the first empty row in the target sheet.
+    Inserts all rows at the first position where both Repository (Column A) and 
+    Actual Link (Column C) are empty.
+    
+    Args:
+        client: gspread client
+        spreadsheet: gspread spreadsheet object
+        target_sheet: Name of the target sheet
+        rows_to_insert: List of row data to insert
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Get target worksheet
+        target_worksheet = spreadsheet.worksheet(target_sheet)
+        
+        # Get all values from target sheet
+        all_values = safe_gspread_call(target_worksheet.get_all_values)
+        
+        # Find the first row with empty Repository (Column A) and Actual Link (Column C)
+        insert_row = None
+        for row_idx, row in enumerate(all_values):
+            # Check if Repository (Column A) and Actual Link (Column C) are empty
+            repo_empty = len(row) <= 0 or not row[0].strip()
+            link_empty = len(row) <= 2 or not row[2].strip()
+            
+            if repo_empty and link_empty:
+                insert_row = row_idx + 1  # Convert to 1-based sheet row number
+                break
+        
+        # If no empty row found, append to the end
+        if insert_row is None:
+            insert_row = len(all_values) + 1
+        
+        # Insert all rows at the found position
+        for i, row_data in enumerate(rows_to_insert):
+            current_insert_row = insert_row + i
+            safe_gspread_call(target_worksheet.insert_row, row_data, current_insert_row)
+        
+        print(f"Successfully bulk inserted {len(rows_to_insert)} rows to {target_sheet} starting at row {insert_row}")
+        return True
+        
+    except Exception as e:
+        print(f"Error bulk inserting rows to {target_sheet}: {e}")
         return False
 
 
@@ -443,16 +510,19 @@ def organize_sheets():
                         for _, row in rows_to_move.iterrows():
                             print(f"      Will move: {row.iloc[0]}")
                     
-                    # BULK APPEND to destination (if there are rows to move)
+                    # BULK INSERT to destination at first empty row (if there are rows to move)
                     if not rows_to_move.empty:
-                        print(f"    Bulk appending {len(rows_to_move)} rows to {destination_sheet}")
+                        print(f"    Bulk inserting {len(rows_to_move)} rows to {destination_sheet} at first empty row")
                         try:
-                            # Convert DataFrame to list of lists for bulk append
-                            rows_to_append = rows_to_move.values.tolist()
-                            safe_gspread_call(dest_worksheet.append_rows, rows_to_append)
-                            print(f"      Successfully bulk appended {len(rows_to_append)} rows to {destination_sheet}")
+                            # Convert DataFrame to list of lists for bulk insert
+                            rows_to_insert = rows_to_move.values.tolist()
+                            if bulk_insert_rows_at_first_empty(client, spreadsheet, destination_sheet, rows_to_insert):
+                                print(f"      Successfully bulk inserted {len(rows_to_insert)} rows to {destination_sheet}")
+                            else:
+                                print(f"      ERROR: Could not bulk insert to {destination_sheet}")
+                                continue
                         except Exception as e:
-                            print(f"      ERROR: Could not bulk append to {destination_sheet}: {e}")
+                            print(f"      ERROR: Could not bulk insert to {destination_sheet}: {e}")
                             continue
                     
                     # BULK DELETE from source (both moved rows and duplicates)

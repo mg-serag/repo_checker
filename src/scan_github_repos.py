@@ -20,12 +20,12 @@ CREDS_FILE = os.path.join(os.path.dirname(__file__), 'creds.json')
 
 # --- Repository Discovery Configuration ---
 MIN_STARS = 400  # Minimum stars for repositories
-PULL_REPO_COUNT = 10000  # Number of new repos we aim to fetch per run
-SKIP_FIRST_RESULTS = 0  # Number of results to skip from the beginning (useful for resuming scans)
+PULL_REPO_COUNT = 10  # Number of new repos we aim to fetch per run
+SKIP_FIRST_RESULTS = 200  # Number of results to skip from the beginning (useful for resuming scans)
 CHECK_OTHER_SHEETS = True  # Whether to check other language sheets for repos that should be in target sheet
 
 # Default target language
-TARGET_LANGUAGE = "Rust"
+TARGET_LANGUAGE = "JavaScript"
 
 def get_sheet_name_for_language(language):
     """Get the sheet name for a given language using centralized config."""
@@ -90,6 +90,9 @@ def check_other_language_sheets(gsheet_client, target_language, target_sheet_nam
         for lang_config in all_languages.values():
             all_sheet_names.add(lang_config.get('sheet_name', ''))
         all_sheet_names.discard('')  # Remove empty sheet names
+        
+        # Also include the Scrap sheet in our checks
+        all_sheet_names.add("Scrap")
         
         # Get existing repos in target sheet
         target_sheet = gsheet_client.open_by_key(SHEET_ID).worksheet(target_sheet_name)
@@ -224,6 +227,7 @@ def get_github_language_query(language):
 def get_existing_repositories(gsheet_client, sheet_name):
     """
     Gets a list of all existing repositories from the Google Sheet.
+    Also checks the Scrap sheet to avoid duplicates there.
     Returns a set of repository names for efficient duplicate checking.
     """
     try:
@@ -249,6 +253,18 @@ def get_existing_repositories(gsheet_client, sheet_name):
         print(f"Found {len(existing_repos)} existing repositories in sheet")
         if skipped_rows > 0:
             print(f"Skipped {skipped_rows} rows with missing or empty repository names")
+        
+        # Also check the Scrap sheet for duplicates
+        try:
+            scrap_sheet = gsheet_client.open_by_key(SHEET_ID).worksheet("Scrap")
+            scrap_values = scrap_sheet.get_all_values()
+            scrap_repos = {row[0].strip() for row in scrap_values if len(row) > 0 and row[0].strip()}
+            existing_repos.update(scrap_repos)
+            print(f"Found {len(scrap_repos)} additional repositories in Scrap sheet")
+        except gspread.exceptions.WorksheetNotFound:
+            print("Scrap sheet not found, skipping Scrap sheet duplicate check")
+        except Exception as e:
+            print(f"Error checking Scrap sheet: {e}")
         
         return existing_repos, len(all_values)
         

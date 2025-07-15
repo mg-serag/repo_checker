@@ -254,353 +254,87 @@ def get_existing_pr_ids_for_repo(repo_name):
     return existing_pr_ids
 
 def process_json_file(input_file, output_file, existing_repos=None, force=False, base_dir=None, language=None, upload_mode='Good'):
-    """Process a single JSON file and convert it to CSV with comprehensive filtering and reporting.
-    
-    Args:
-        input_file: Path to the input JSON file
-        output_file: Path to the output CSV file
-        existing_repos: Set of existing repository names for deduplication
-        force: Force processing even if output file exists
-        base_dir: Base directory for finding PR reports
-        language: Target language for processing
-        upload_mode: Upload filtering mode ('All', 'Good', 'Logical')
-            - All: Upload all PRs found in the JSON file (only do deduplication)
-            - Good: Filter to include only Good PRs (PRs marked as "Good PR" in reports)
-            - Logical: Filter to include all PRs in the PR report (good or bad)
     """
-    
-    # Add detailed logging for debugging
-    print(f"🔍 DEBUG: process_json_file called with:")
-    print(f"   input_file: {input_file}")
-    print(f"   output_file: {output_file}")
-    print(f"   base_dir: {base_dir}")
-    print(f"   language: {language}")
-    print(f"   force: {force}")
-    
-    # Check if input file exists
-    if not os.path.exists(input_file):
-        print(f"❌ ERROR: Input file does not exist: {input_file}")
-        return {
-            'success': False,
-            'error': f'Input file not found: {input_file}'
-        }
-    
-    print(f"✅ Input file exists: {input_file}")
-    
-    # Check if output file already exists
-    if os.path.exists(output_file) and not force:
-        print(f"⏭️ Skipping {input_file} - {output_file} already exists")
-        return False
-    
-    # Ensure output directory exists
-    output_dir = os.path.dirname(output_file)
-    print(f"🔍 DEBUG: Output directory: {output_dir}")
-    print(f"🔍 DEBUG: Output directory exists: {os.path.exists(output_dir)}")
-    print(f"🔍 DEBUG: Output directory is absolute: {os.path.isabs(output_dir)}")
-    print(f"🔍 DEBUG: Current working directory: {os.getcwd()}")
-    
-    try:
-        # Create all parent directories if they don't exist
-        os.makedirs(output_dir, exist_ok=True)
-        print(f"✅ Created/verified output directory: {output_dir}")
-        
-        # Test write permissions by creating a temporary file
-        test_file = os.path.join(output_dir, "test_write_permission.tmp")
-        try:
-            with open(test_file, 'w') as f:
-                f.write("test")
-            os.remove(test_file)
-            print(f"✅ Write permission test passed for {output_dir}")
-        except Exception as e:
-            print(f"❌ ERROR: No write permission for {output_dir}: {e}")
-            return {
-                'success': False,
-                'error': f'No write permission for output directory: {e}'
-            }
-            
-    except Exception as e:
-        print(f"❌ ERROR: Failed to create output directory {output_dir}: {e}")
-        print(f"🔍 DEBUG: Directory components:")
-        parts = output_dir.split(os.sep)
-        for i, part in enumerate(parts):
-            if part:
-                partial_path = os.sep.join(parts[:i+1])
-                exists = os.path.exists(partial_path)
-                print(f"   {partial_path}: {'exists' if exists else 'missing'}")
-        return {
-            'success': False,
-            'error': f'Failed to create output directory: {e}'
-        }
-    
-    # Open and load the JSON data from file
-    try:
-        with open(input_file, 'r', encoding='utf-8') as json_file:
-            data = json.load(json_file)
-        print(f"✅ Successfully loaded JSON data from {input_file}")
-    except Exception as e:
-        print(f"❌ ERROR: Failed to load JSON from {input_file}: {e}")
-        return {
-            'success': False,
-            'error': f'Failed to load JSON: {e}'
-        }
-
-    # Ensure that the JSON data is a list of objects
-    if not isinstance(data, list):
-        error_msg = f"The JSON file {input_file} does not contain an array of objects."
-        print(f"❌ ERROR: {error_msg}")
-        raise ValueError(error_msg)
-
-    # Extract repo name from the first object if available
-    repo_name = None
-    if data and len(data) > 0:
-        first_obj = data[0]
-        if "repo" in first_obj:
-            repo_name = first_obj["repo"]
-            print(f"📁 Processing repo: {repo_name}")
-
-    # Initialize tracking variables for reporting
-    initial_pr_count = len(data)
-    after_date_filter_count = 0
-    after_good_prs_filter_count = 0
-    after_lt_dedup_count = 0
-    after_local_dedup_count = 0
-    after_validation_count = 0
-    final_pr_count = 0
-    
-    print(f"📊 Initial PR count: {initial_pr_count}")
-
-    # STEP 1: Apply validation filtering (mandatory)
-    print(f"✅ Applying validation filtering (minimum required fields: pr_id, swe_url, issue_id)")
-    validated_data = []
-    invalid_count = 0
-    
-    for obj in data:
-        if validate_pr_data(obj):
-            validated_data.append(obj)
-        else:
-            invalid_count += 1
-            if invalid_count <= 5:  # Show first 5 invalid PRs for debugging
-                missing_fields = []
-                for field in ['pr_id', 'swe_url', 'issue_id']:
-                    if field not in obj or not obj[field]:
-                        missing_fields.append(field)
-                print(f"⚠️ Invalid PR: missing fields {missing_fields}")
-    
-    after_validation_count = len(validated_data)
-    print(f"✅ After validation filtering: {after_validation_count} PRs (removed {invalid_count} invalid PRs)")
-
-    # STEP 2: Apply date filtering (mandatory)
-    print(f"📅 Applying date filtering (after {FILTER_DATE.date()})")
-    date_filtered_data = []
-    for obj in validated_data:
-        if "pr_merged_at" in obj:
-            try:
-                merged_date = datetime.strptime(obj["pr_merged_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
-                if merged_date >= FILTER_DATE:
-                    date_filtered_data.append(obj)
-            except (ValueError, TypeError):
-                continue
-    
-    after_date_filter_count = len(date_filtered_data)
-    print(f"✅ After date filtering: {after_date_filter_count} PRs")
-
-    # STEP 2: Apply filtering based on upload mode
-    print(f"🔍 Upload mode: {upload_mode}")
-    
-    if upload_mode == 'All':
-        # All mode: Use all date-filtered PRs (no GOOD_PRS_ONLY filtering)
-        print(f"✅ Using 'All' mode - including all date-filtered PRs")
-        good_prs_filtered_data = date_filtered_data
-        after_good_prs_filter_count = len(good_prs_filtered_data)
-        good_pr_count = 0
-        missing_good_prs_count = 0
-    elif upload_mode in ['Good', 'Logical']:
-        # Good/Logical mode: Apply PR reports filtering
-        if repo_name and base_dir:
-            print(f"🔍 Applying {upload_mode} filtering for repo: {repo_name}")
-            if language:
-                print(f"🌐 Language: {language}")
-            
-            relevant_pr_ids, good_pr_count, missing_good_prs = load_relevant_pr_ids_from_reports(repo_name, base_dir, language, upload_mode)
-            
-            # If no relevant PRs file exists, include all date-filtered PRs
-            if not relevant_pr_ids:
-                print(f"✅ No relevant PRs file found, using all date-filtered PRs")
-                good_prs_filtered_data = date_filtered_data
-                after_good_prs_filter_count = len(good_prs_filtered_data)
-                good_pr_count = 0
-                missing_good_prs_count = 0
-            else:
-                print(f"🔍 Relevant PR IDs: {relevant_pr_ids}")
-                
-                if upload_mode == 'Good':
-                    # Good mode: Only include PRs marked as "Good PR"
-                    good_prs_filtered_data = []
-                    for obj in date_filtered_data:
-                        pr_id = str(obj.get("pr_id", ""))
-                        if pr_id in relevant_pr_ids:
-                            good_prs_filtered_data.append(obj)
-                    after_good_prs_filter_count = len(good_prs_filtered_data)
-                    print(f"✅ After GOOD filtering: {after_good_prs_filter_count} PRs")
-                else:  # Logical mode
-                    # Logical mode: Include all PRs in the report (good or bad)
-                    good_prs_filtered_data = []
-                    for obj in date_filtered_data:
-                        pr_id = str(obj.get("pr_id", ""))
-                        if pr_id in relevant_pr_ids:
-                            good_prs_filtered_data.append(obj)
-                    after_good_prs_filter_count = len(good_prs_filtered_data)
-                    print(f"✅ After LOGICAL filtering: {after_good_prs_filter_count} PRs")
-                
-                # Calculate missing Good PRs (Good PRs that are not in the JSON file)
-                json_pr_ids = {str(obj.get("pr_id", "")) for obj in date_filtered_data}
-                missing_good_prs_in_json = [pr_id for pr_id in missing_good_prs if pr_id not in json_pr_ids]
-                missing_good_prs_count = len(missing_good_prs_in_json)
-                
-                if missing_good_prs_count > 0:
-                    print(f"⚠️ Found {missing_good_prs_count} Good PRs missing from JSON file: {missing_good_prs_in_json}")
-                else:
-                    print(f"✅ All Good PRs found in JSON file")
-        else:
-            # Fallback: use all date-filtered PRs if no repo name or base_dir
-            print(f"⚠️ No repo name or base_dir provided, using all date-filtered PRs")
-            good_prs_filtered_data = date_filtered_data
-            after_good_prs_filter_count = len(good_prs_filtered_data)
-            good_pr_count = 0
-            missing_good_prs_count = 0
-    else:
-        # Invalid upload mode
-        print(f"❌ ERROR: Invalid upload mode '{upload_mode}'. Using 'Good' mode as fallback.")
-        good_prs_filtered_data = date_filtered_data
-        after_good_prs_filter_count = len(good_prs_filtered_data)
-        good_pr_count = 0
-        missing_good_prs_count = 0
-
-    # STEP 3: Apply labeling tool duplicate filtering
-    current_data = good_prs_filtered_data
-    if existing_repos is not None and repo_name:
-        lt_repo_name = convert_repo_name_to_lt_format(repo_name)
-        
-        if lt_repo_name in existing_repos:
-            print(f"🔍 Repo {repo_name} exists in labeling tool, fetching existing PRs...")
-            existing_pr_ids = get_existing_pr_ids_for_repo(repo_name)
-            
-            # Filter out existing PRs from labeling tool
-            lt_filtered_data = [obj for obj in current_data if str(obj.get("pr_id", "")) not in existing_pr_ids]
-            after_lt_dedup_count = len(lt_filtered_data)
-            print(f"🔄 After LT deduplication: {after_lt_dedup_count} PRs (filtered out {len(current_data) - after_lt_dedup_count})")
-            current_data = lt_filtered_data
-        else:
-            print(f"🔍 Repo {repo_name} not found in labeling tool, skipping LT deduplication")
-            after_lt_dedup_count = len(current_data)
-    else:
-        after_lt_dedup_count = len(current_data)
-
-    # STEP 4: Apply local file duplicate filtering
-    if repo_name:
-        output_dir = os.path.dirname(output_file)
-        repo_base_name = os.path.splitext(os.path.basename(output_file))[0]
-        
-        # Get all existing PR IDs from local files
-        local_existing_pr_ids = get_all_existing_pr_ids_for_repo(output_dir, repo_base_name)
-        
-        # Filter out PRs that already exist in local files
-        final_data = [obj for obj in current_data if str(obj.get("pr_id", "")) not in local_existing_pr_ids]
-        after_local_dedup_count = len(final_data)
-        final_pr_count = after_local_dedup_count
-        
-        print(f"📁 Found {len(local_existing_pr_ids)} existing PRs in local files")
-        print(f"🔄 After local deduplication: {final_pr_count} PRs (filtered out {len(current_data) - final_pr_count})")
-    else:
-        final_data = current_data
-        after_local_dedup_count = len(current_data)
-        final_pr_count = len(current_data)
-
-    # STEP 5: Save the final filtered data
-    print(f"💾 Saving {final_pr_count} PRs to {output_file}")
-    
-    # Handle case where no PRs remain after filtering
-    if final_pr_count == 0:
-        print(f"⚠️ No PRs remain after filtering for {repo_name}")
-        print(f"   This could be due to:")
-        print(f"   - All PRs were filtered out by date")
-        print(f"   - All PRs were filtered out by upload mode filtering")
-        print(f"   - All PRs were already in labeling tool")
-        print(f"   - All PRs were already in local files")
-        
-        # Still create the CSV file but with no data
-        try:
-            with open(output_file, 'w', newline='', encoding='utf-8') as csv_file:
-                writer = csv.writer(csv_file)
-                writer.writerow(['metadata'])
-            print(f"✅ Created empty CSV file: {output_file}")
-        except Exception as e:
-            print(f"❌ ERROR: Failed to write empty CSV file {output_file}: {e}")
-            return {
-                'success': False,
-                'error': f'Failed to write empty CSV file: {e}'
-            }
-    else:
-        try:
-            # Write the final filtered data to a CSV file
-            with open(output_file, 'w', newline='', encoding='utf-8') as csv_file:
-                writer = csv.writer(csv_file)
-                writer.writerow(['metadata'])
-                for obj in final_data:
-                    # Clean the metadata before writing
-                    cleaned_obj = clean_metadata(obj)
-                    json_str = json.dumps(cleaned_obj)
-                    writer.writerow([json_str])
-            
-            print(f"✅ Successfully saved CSV file: {output_file}")
-        except Exception as e:
-            print(f"❌ ERROR: Failed to write CSV file {output_file}: {e}")
-            return {
-                'success': False,
-                'error': f'Failed to write CSV file: {e}'
-            }
-
-    # STEP 6: Create part file if there are new PRs and repo exists in LT
-    if final_pr_count > 0 and existing_repos is not None and repo_name:
-        lt_repo_name = convert_repo_name_to_lt_format(repo_name)
-        if lt_repo_name in existing_repos:
-            # Determine the next part number
-            next_part_num = get_next_part_number(output_dir, repo_base_name)
-            part_file = os.path.join(output_dir, f"{repo_base_name}_part_{next_part_num:02d}.csv")
-            
-            try:
-                with open(part_file, 'w', newline='', encoding='utf-8') as csv_file:
-                    writer = csv.writer(csv_file)
-                    writer.writerow(['metadata'])
-                    for obj in final_data:
-                        # Clean the metadata before writing
-                        cleaned_obj = clean_metadata(obj)
-                        json_str = json.dumps(cleaned_obj)
-                        writer.writerow([json_str])
-                
-                print(f"📄 Created new part file: {part_file} with {final_pr_count} new PRs")
-            except Exception as e:
-                print(f"❌ ERROR: Failed to create part file {part_file}: {e}")
-        else:
-            print("⏭️ Repo not in labeling tool, skipping part file creation")
-    elif final_pr_count == 0:
-        print("⏭️ No new PRs found, skipping part file creation")
-
-    # Return processing statistics for reporting
-    return {
-        'repo_name': repo_name,
-        'language': language,
-        'initial_pr_count': initial_pr_count,
-        'after_validation_count': after_validation_count,
-        'after_date_filter_count': after_date_filter_count,
-        'after_good_prs_filter_count': after_good_prs_filter_count,
-        'after_lt_dedup_count': after_lt_dedup_count,
-        'after_local_dedup_count': after_local_dedup_count,
-        'final_pr_count': final_pr_count,
-        'good_prs_in_reports': good_pr_count,
-        'missing_good_prs_count': missing_good_prs_count,
-        'success': True
+    Process a single JSON file, filter PRs, and convert to CSV.
+    Now returns detailed processing statistics.
+    """
+    stats = {
+        'initial_pr_count': 0,
+        'after_date_filter_count': 0,
+        'logical_pr_count': 0,
+        'good_pr_count': 0,
+        'final_pr_count': 0,
+        'uploaded_pr_count': 0,
+        'missing_pr_ids': []
     }
+
+    try:
+        with open(input_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError) as e:
+        print(f"Error reading JSON file {input_file}: {e}")
+        return {**stats, 'success': False}
+    
+    stats['initial_pr_count'] = len(data)
+    
+    # 1. Date Filtering
+    # Keep PRs merged on or after the cutoff date (FILTER_DATE). The previous
+    # implementation used a '<' comparison which unintentionally excluded
+    # these newer PRs and resulted in empty results even when relevant PRs
+    # existed. We now use ">=" to include PRs that meet or exceed the
+    # threshold.
+    date_filtered_data = [
+        obj for obj in data
+        if 'pr_merged_at' in obj and obj['pr_merged_at'] and
+        datetime.fromisoformat(obj['pr_merged_at'].replace('Z', '')) >= FILTER_DATE
+    ]
+    stats['after_date_filter_count'] = len(date_filtered_data)
+
+    repo_name = data[0].get('repo') if data else None
+    
+    # 2. Upload Mode Filtering (Logical or Good)
+    if upload_mode in ['Logical', 'Good']:
+        relevant_pr_ids, good_pr_ids = load_relevant_pr_ids_from_reports(repo_name, base_dir, language, upload_mode)
+        
+        if upload_mode == 'Logical':
+            filtered_data = [pr for pr in date_filtered_data if str(pr.get('pr_id')) in relevant_pr_ids]
+            stats['logical_pr_count'] = len(filtered_data)
+        else: # 'Good'
+            filtered_data = [pr for pr in date_filtered_data if str(pr.get('pr_id')) in good_pr_ids]
+            stats['good_pr_count'] = len(filtered_data)
+            # We can also report the total logical PRs found in reports for context
+            stats['logical_pr_count'] = len(relevant_pr_ids)
+
+    else: # 'All'
+        filtered_data = date_filtered_data
+        stats['logical_pr_count'] = len(filtered_data) # In 'All' mode, all are considered 'logical'
+        stats['good_pr_count'] = len(filtered_data) # and 'good' for stat purposes
+
+    # This is the final count of PRs after all filtering, before writing to CSV
+    stats['final_pr_count'] = len(filtered_data)
+    
+    # Write to CSV
+    if filtered_data:
+        # Clean metadata and write to CSV
+        final_rows = [clean_metadata(pr) for pr in filtered_data]
+
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['metadata'])
+            for row in final_rows:
+                writer.writerow([json.dumps(row)])
+
+        stats['uploaded_pr_count'] = len(final_rows)
+    else:
+        stats['uploaded_pr_count'] = 0
+
+    # Calculate missing PR IDs
+    initial_ids = {str(pr.get('pr_id')) for pr in data}
+    final_ids = {str(pr.get('pr_id')) for pr in filtered_data}
+    missing_ids = sorted(list(initial_ids - final_ids))
+    stats['missing_pr_ids'] = missing_ids
+    
+    return {**stats, 'success': True}
 
 def process_directory(input_dir, output_dir, existing_repos=None, force=False, base_dir=None, language=None):
     """Process all JSON files in a directory."""
@@ -807,12 +541,10 @@ def load_relevant_pr_ids_from_reports(repo_name, base_dir, language=None, upload
     if not os.path.exists(file_path):
         print(f"⚠️ No relevant PRs file found: {file_path}")
         print(f"   Including all PRs for {repo_name} (no filtering applied)")
-        return set(), 0, []  # Return empty set to include all PRs
+        return set(), set()  # Return empty sets to include all PRs
     
     relevant_pr_ids = set()
-    good_pr_count = 0
-    unchecked_pr_count = 0
-    missing_good_prs = []  # Track Good PRs that might be missing from JSON
+    good_pr_ids = set() # New set to store only Good PR IDs
     
     try:
         with open(file_path, 'r', encoding='utf-8') as csv_file:
@@ -846,33 +578,29 @@ def load_relevant_pr_ids_from_reports(repo_name, base_dir, language=None, upload
                                 # Good mode: Only include PRs with "Good PR" status
                                 if agent_result == "Good PR":
                                     relevant_pr_ids.add(pr_id)
-                                    good_pr_count += 1
-                                    missing_good_prs.append(pr_id)  # Track for potential missing analysis
+                                    good_pr_ids.add(pr_id) # Add to good_pr_ids
                                 elif agent_result == "Not Checked":
                                     relevant_pr_ids.add(pr_id)
-                                    unchecked_pr_count += 1
                                 # Note: "Bad PR" PRs are excluded
                             else:  # Logical mode
                                 # Logical mode: Include all PRs in the report (good, bad, or unchecked)
                                 if agent_result in ["Good PR", "Bad PR", "Not Checked"]:
                                     relevant_pr_ids.add(pr_id)
                                     if agent_result == "Good PR":
-                                        good_pr_count += 1
-                                        missing_good_prs.append(pr_id)
+                                        good_pr_ids.add(pr_id) # Add to good_pr_ids
                                     elif agent_result == "Not Checked":
-                                        unchecked_pr_count += 1
+                                        pass # No need to add to good_pr_ids
                             
     except Exception as e:
         print(f"❌ Error loading relevant PRs file {file_path}: {e}")
         print(f"   Including all PRs for {repo_name} (error in file reading)")
-        return set(), 0, []  # Return empty set to include all PRs
+        return set(), set()  # Return empty sets to include all PRs
     
     print(f"Loaded {len(relevant_pr_ids)} relevant PR IDs from {file_path}")
-    print(f"  - Good PRs: {good_pr_count}")
-    print(f"  - Not Checked PRs: {unchecked_pr_count}")
-    print(f"  - Good PRs tracked for missing analysis: {len(missing_good_prs)}")
+    print(f"  - Good PRs: {len(good_pr_ids)}")
+    print(f"  - Total PRs in report: {len(relevant_pr_ids)}")
     
-    return relevant_pr_ids, good_pr_count, missing_good_prs
+    return relevant_pr_ids, good_pr_ids
 
 def create_processing_report(processing_stats, base_dir):
     """Create a comprehensive CSV report of processing statistics."""
@@ -895,13 +623,13 @@ def create_processing_report(processing_stats, base_dir):
     failed_repos = total_repos - successful_repos
     
     total_initial_prs = sum(stat.get('initial_pr_count', 0) for stat in processing_stats)
-    total_after_validation = sum(stat.get('after_validation_count', 0) for stat in processing_stats)
+    total_after_validation = sum(stat.get('after_date_filter_count', 0) for stat in processing_stats)
     total_after_date = sum(stat.get('after_date_filter_count', 0) for stat in processing_stats)
-    total_after_good_prs = sum(stat.get('after_good_prs_filter_count', 0) for stat in processing_stats)
+    total_after_good_prs = sum(stat.get('good_pr_count', 0) for stat in processing_stats)
     total_after_lt_dedup = sum(stat.get('after_lt_dedup_count', 0) for stat in processing_stats)
     total_after_local_dedup = sum(stat.get('after_local_dedup_count', 0) for stat in processing_stats)
     total_final_prs = sum(stat.get('final_pr_count', 0) for stat in processing_stats)
-    total_good_prs_in_reports = sum(stat.get('good_prs_in_reports', 0) for stat in processing_stats)
+    total_good_prs_in_reports = sum(stat.get('good_pr_count', 0) for stat in processing_stats)
     total_missing_good_prs = sum(stat.get('missing_good_prs_count', 0) for stat in processing_stats)
     
     # Count repositories with no usable PRs
@@ -941,11 +669,9 @@ def create_processing_report(processing_stats, base_dir):
             # Determine reason for no usable PRs
             no_prs_reason = ""
             if stat.get('final_pr_count', 0) == 0:
-                if stat.get('after_validation_count', 0) == 0:
-                    no_prs_reason = "All PRs failed validation (missing required fields)"
-                elif stat.get('after_date_filter_count', 0) == 0:
+                if stat.get('after_date_filter_count', 0) == 0:
                     no_prs_reason = "All PRs filtered out by date"
-                elif stat.get('after_good_prs_filter_count', 0) == 0:
+                elif stat.get('good_pr_count', 0) == 0:
                     no_prs_reason = "All PRs filtered out by upload mode filtering"
                 elif stat.get('after_lt_dedup_count', 0) == 0:
                     no_prs_reason = "All PRs already in labeling tool"
@@ -959,13 +685,12 @@ def create_processing_report(processing_stats, base_dir):
                 stat.get('language', 'Unknown'),
                 stat.get('upload_mode', 'Unknown'),
                 stat.get('initial_pr_count', 0),
-                stat.get('after_validation_count', 0),
                 stat.get('after_date_filter_count', 0),
-                stat.get('after_good_prs_filter_count', 0),
+                stat.get('good_pr_count', 0), # Changed from after_good_prs_filter_count
                 stat.get('after_lt_dedup_count', 0),
                 stat.get('after_local_dedup_count', 0),
                 stat.get('final_pr_count', 0),
-                stat.get('good_prs_in_reports', 0),
+                stat.get('good_pr_count', 0), # Changed from good_prs_in_reports
                 stat.get('missing_good_prs_count', 0),
                 'Success' if stat.get('success', False) else 'Failed',
                 stat.get('error', ''),

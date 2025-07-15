@@ -1,3 +1,10 @@
+"""
+Agentic PR Checker
+
+This script analyzes GitHub repositories to find "Good PRs" based on logical and agentic criteria.
+PR reports are stored in the /repo_evaluator folder in the base directory (one level up from src).
+"""
+
 import os
 import sys
 import time
@@ -33,7 +40,10 @@ PR_PROCESSING_THRESHOLD = 1.0
 # --- Single Repo Mode Configuration ---
 SINGLE_REPO_MODE = False
 SINGLE_REPO_URL = "https://github.com/example/example-repo"
-SINGLE_REPO_OUTPUT_DIR = "repo_evaluator/pr_reports"
+# Get the base directory for single repo output
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(SCRIPT_DIR)  # Go up one level from src
+SINGLE_REPO_OUTPUT_DIR = os.path.join(BASE_DIR, "repo_evaluator", "pr_reports")
 
 # --- Load Configuration from Centralized Config ---
 from config_utils import (
@@ -93,9 +103,11 @@ SCOPE = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/au
 # --- Agent Prompt ---
 AGENT_PROMPT = """
 You are a senior software engineer evaluating a GitHub issue to determine if it's suitable for a "Good PR".
+In General, the issue should clearly indicate a problem or a bug or a feature request. The issues statment can include a solution or suggestion, but not necessarily.
+If the issue statment is just reporting the bug, then that is considered valid.
 
 A "Good PR" is linked to an issue that meets these criteria:
-1.  **Clear and Actionable**: It describes a specific, actionable problem or feature, providing enough context for a developer to start working.
+1.  **Clear and Actionable**: It describes a specific problem or feature request, providing enough context for a developer to start working.
 2.  **Not a Revert**: The issue must not be a request to simply revert previous changes or roll back to an older version.
 3.  **Single Issue Focus**: The issue should be focused on closing a single, well-defined problem or feature request.
 4.  **Primarily in English**: At least 90 percent of the issue content should be written in English.
@@ -198,12 +210,16 @@ def _is_test_file(filepath: str, lang_name: str) -> bool:
 
 def get_language_output_dir():
     """Returns the language-specific output directory for PR reports."""
+    # Get the base directory (one level up from src)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(script_dir)  # Go up one level from src
+    
     try:
         # Try to get the folder name from language config
         csv_folder = get_language_csv_folder(TARGET_LANGUAGE)
         # Convert csv folder name to pr_reports folder name
         folder_name = csv_folder.replace('_csv', '_pr_reports').replace('_json', '_pr_reports')
-        output_dir = os.path.join("repo_evaluator", folder_name)
+        output_dir = os.path.join(base_dir, "repo_evaluator", folder_name)
     except (FileNotFoundError, KeyError):
         # Fallback to manual mapping
         language_folder_map = {
@@ -218,7 +234,7 @@ def get_language_output_dir():
             'Ruby': 'Ruby_pr_reports'
         }
         folder_name = language_folder_map.get(TARGET_LANGUAGE, f'{TARGET_LANGUAGE}_pr_reports')
-        output_dir = os.path.join("repo_evaluator", folder_name)
+        output_dir = os.path.join(base_dir, "repo_evaluator", folder_name)
     
     os.makedirs(output_dir, exist_ok=True)
     return output_dir
@@ -231,7 +247,9 @@ def print_language_configuration():
     print(f"Target Language: {TARGET_LANGUAGE}")
     print(f"Sheet Name: {SHEET_NAME}")
     print(f"Spreadsheet Key: {SPREADSHEET_KEY}")
-    print(f"Output Directory: {get_language_output_dir()}")
+    output_dir = get_language_output_dir()
+    print(f"Output Directory: {output_dir}")
+    print(f"Output Directory (absolute): {os.path.abspath(output_dir)}")
     print("-" * 80)
     print(f"Source Extensions: {', '.join(sorted(get_source_extensions(TARGET_LANGUAGE)))}")
     print(f"Dependency Files: {', '.join(sorted(get_dependency_files(TARGET_LANGUAGE)))}")
@@ -743,6 +761,7 @@ def write_prs_to_csv(owner, repo, relevant_prs, agent_decisions, output_dir=None
         else:
             output_dir = get_language_output_dir()
     
+    # Ensure the output directory exists
     os.makedirs(output_dir, exist_ok=True)
     filename = os.path.join(output_dir, f"{owner}__{repo}_relevant_prs.csv")
     
@@ -768,6 +787,7 @@ def write_prs_to_csv(owner, repo, relevant_prs, agent_decisions, output_dir=None
             })
     
     print(f"📄 Saved PR report for {owner}/{repo} to {filename}")
+    print(f"📁 Output directory: {output_dir}")
 
 def run_single_repo_analysis(repo_url):
     """Run agentic PR checker on a single repository."""
@@ -784,13 +804,16 @@ def run_single_repo_analysis(repo_url):
     relevant_prs, total_count = find_logically_relevant_prs(owner, repo)
     print(f"📈 Total PRs found: {total_count}")
     print(f"📈 Logically relevant PRs: {len(relevant_prs)}")
-    
+
+    # 👉 Write initial CSV with status 'Not Checked'
+    write_prs_to_csv(owner, repo, relevant_prs, {}, get_language_output_dir())
+
     # Run agentic checks
     if relevant_prs:
         passed, agent_decisions = run_agentic_check_on_repo(relevant_prs, owner, repo)
         print(f"🤖 Agentic check result: {'PASSED' if passed else 'FAILED'}")
         
-        # Write results to CSV
+        # 👉 Overwrite CSV with final Good/Bad statuses
         write_prs_to_csv(owner, repo, relevant_prs, agent_decisions, get_language_output_dir())
         
         # Print summary
@@ -941,6 +964,9 @@ def main():
         relevant_prs, total_count = find_logically_relevant_prs(owner, repo)
         update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['total_prs'], total_count)
         update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['relevant_prs'], len(relevant_prs))
+
+        # 👉 Write initial CSV with status 'Not Checked'
+        write_prs_to_csv(owner, repo, relevant_prs, {}, get_language_output_dir())
 
         # Phase 2: Agentic analysis
         if relevant_prs:

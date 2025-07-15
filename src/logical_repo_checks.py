@@ -1,4 +1,21 @@
 #!/home/amir/.venv_base/bin/python3
+"""
+Logical Repository Checker
+
+This script evaluates repositories and automatically moves them to appropriate sheets based on their majority language.
+Repositories with languages not configured in language_configs.json are moved to the "Scrap" sheet.
+
+Key Changes:
+- No longer updates "Already Exists" column (Column H)
+- Deletes duplicate repositories instead of marking them
+- Processes repositories existing in labeling tool for data collection
+- Maintains clean spreadsheet by removing duplicates
+
+Supported languages (configured in language_configs.json):
+- Python, JavaScript, TypeScript, Java, Go, C/C++, Ruby, Rust, C#
+
+Any other language detected will be moved to the "Scrap" sheet.
+"""
 
 import requests
 from requests.exceptions import RequestException
@@ -20,7 +37,7 @@ SPREADSHEET_KEY = get_spreadsheet_key()
 
 # --- Language Configuration ---
 # Set the target language for evaluation
-TARGET_LANGUAGE = 'JavaScript'  # Options: 'Java', 'JavaScript', 'Python', 'Go', 'C/C++', 'Rust', 'C#'
+TARGET_LANGUAGE = 'C/C++'  # Options: 'Java', 'JavaScript', 'Python', 'Go', 'C/C++', 'Rust', 'C#'
 
 # Language-specific configurations
 from config_utils import (
@@ -676,36 +693,12 @@ def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, ro
     results = {
         'repo': user_repo, 'should_add': False, 'reason': "",
         'language_name': "N/A", 'language_percent': 0, 'star_count': 0, 
-        'loc_count': "N/A", 'already_exists': "No", 'manual_review': False,
+        'loc_count': "N/A", 'manual_review': False,
     }
 
-    # 1. Check if it already exists in the labeling tool
-    if user_repo.lower() in existing_lt_repos:
-        results['reason'] = "Exists in Labeling Tool"
-        results['already_exists'] = "Yes"
-        print(f"=== Evaluation completed in {time.time() - start_time:.2f} seconds ===\n")
-        return results
-
-    # 2. Check if it already exists in the sheet as a processed repo (marked as 'Yes' in Added column)
-    repo_url_col_name = f"col_{column_indices['repo_url']}"
-    added_col_name = f"col_{column_indices['added']}"
-    
-    # Ensure columns exist before filtering
-    if repo_url_col_name in all_repos_df.columns and added_col_name in all_repos_df.columns:
-        repo_url_lower = f"https://github.com/{user_repo}".lower()
-        
-        # Normalize URLs in the DataFrame for comparison
-        normalized_urls = all_repos_df[repo_url_col_name].str.lower().str.strip()
-
-        # Find matching rows and check if any are marked as 'Yes'
-        matching_rows = all_repos_df[normalized_urls == repo_url_lower]
-        if not matching_rows.empty:
-            # Check if any matching rows are already marked as 'Yes' in the added column
-            if matching_rows[added_col_name].str.lower().eq('yes').any():
-                results['reason'] = "Exists in Sheet"
-                results['already_exists'] = "Yes"
-                print(f"=== Evaluation completed in {time.time() - start_time:.2f} seconds ===\n")
-                return results
+    # Note: We no longer check "already_exists" status - we process all repos
+    # Repositories in LT will be processed for data collection
+    # Duplicates will be handled by deletion logic in main()
 
     # 3. Fetch repo details (language and stars)
     details = get_repo_details(user_repo)
@@ -759,26 +752,38 @@ def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, ro
     else:
         results['loc_count'] = lines
         # Use evaluation settings for the primary language, not target language
-        primary_lang_eval_settings = get_language_evaluation_settings(primary_lang_name)
-        required_loc = get_required_loc_for_stars(stars, primary_lang_eval_settings['loc_thresholds'])
-        if lines >= required_loc:
-            loc_check_passed = True
-        else:
-            loc_check_passed = False
+        try:
+            primary_lang_eval_settings = get_language_evaluation_settings(primary_lang_name)
+            required_loc = get_required_loc_for_stars(stars, primary_lang_eval_settings['loc_thresholds'])
+            if lines >= required_loc:
+                loc_check_passed = True
+            else:
+                loc_check_passed = False
+        except KeyError:
+            # For unconfigured languages, use target language settings as fallback
+            print(f"[Evaluation] Language '{primary_lang_name}' not configured, using target language settings")
+            required_loc = get_required_loc_for_stars(stars, eval_settings['loc_thresholds'])
+            if lines >= required_loc:
+                loc_check_passed = True
+            else:
+                loc_check_passed = False
 
     # Manual review determination: other checks pass but LOC had an error
-    if (results['already_exists'] == "No" and
-        stars >= eval_settings['min_stars'] and
+    if (stars >= eval_settings['min_stars'] and
         str(results['loc_count']).upper().startswith("ERROR")):
         results['manual_review'] = True
 
     # Final verdict - Consider both target language and primary language
     # A repo should be added if it meets criteria for its primary language OR target language
-    primary_lang_eval_settings = get_language_evaluation_settings(primary_lang_name)
+    try:
+        primary_lang_eval_settings = get_language_evaluation_settings(primary_lang_name)
+    except KeyError:
+        # For unconfigured languages, use target language settings as fallback
+        print(f"[Evaluation] Language '{primary_lang_name}' not configured, using target language settings")
+        primary_lang_eval_settings = eval_settings
     
     # Check if repo meets criteria for primary language
     primary_lang_checks_passed = [
-        results['already_exists'] == "No",
         primary_lang_percent >= primary_lang_eval_settings['min_percentage'],
         stars >= primary_lang_eval_settings['min_stars'],
         loc_check_passed
@@ -786,7 +791,6 @@ def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, ro
     
     # Check if repo meets criteria for target language
     target_lang_checks_passed = [
-        results['already_exists'] == "No",
         target_lang_percent >= eval_settings['min_percentage'],
         stars >= eval_settings['min_stars'],
         loc_check_passed
@@ -799,8 +803,6 @@ def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, ro
         results['reason'] = "LOC check error – manual review required"
     elif not results['should_add']:
         reasons = []
-        if results['already_exists'] == "Yes": 
-            reasons.append("Exists in Labeling Tool/Sheet")
         if target_lang_percent < eval_settings['min_percentage'] and primary_lang_percent < primary_lang_eval_settings['min_percentage']:
             reasons.append(f"Language percentage too low (Target: {target_lang_percent:.2f}%, Primary: {primary_lang_percent:.2f}%)")
         if stars < eval_settings['min_stars'] and stars < primary_lang_eval_settings['min_stars']:
@@ -850,7 +852,6 @@ def update_sheet_with_results(json_path, spreadsheet_key, scope, sheet_name, rep
             gspread.Cell(row_index, column_indices['percentage'] + 1, results['language_percent']),
             gspread.Cell(row_index, column_indices['stars'] + 1, results['star_count']),
             gspread.Cell(row_index, column_indices['loc'] + 1, str(results['loc_count'])),
-            gspread.Cell(row_index, column_indices['already_exists'] + 1, results['already_exists']),
             gspread.Cell(row_index, column_indices['logical_checks'] + 1, final_verdict),
         ]
         
@@ -862,57 +863,38 @@ def update_sheet_with_results(json_path, spreadsheet_key, scope, sheet_name, rep
 
 # --- Duplicate Detection ---
 
-def preprocess_duplicates(df, column_indices, existing_lt_repos):
+def identify_duplicates_for_deletion(df, column_indices, existing_lt_repos):
     """
-    Preprocesses the DataFrame to identify and mark duplicate repositories.
-    Marks all instances except the first occurrence as duplicates.
-    Also checks against existing repos in the labeling tool.
+    Identifies duplicate repositories for deletion.
+    Returns a list of row indices to delete from the sheet.
     """
-    print("--- Preprocessing Duplicates ---")
+    print("--- Identifying Duplicates for Deletion ---")
     
     repo_url_col_idx = column_indices['repo_url']
-    already_exists_col_idx = column_indices['already_exists']
-    logical_checks_col_idx = column_indices['logical_checks']
     user_repo_col_idx = column_indices['user_repo']
     
     repo_url_col_name = f"col_{repo_url_col_idx}"
-    already_exists_col_name = f"col_{already_exists_col_idx}"
-    logical_checks_col_name = f"col_{logical_checks_col_idx}"
     user_repo_col_name = f"col_{user_repo_col_idx}"
     
     # Ensure we have enough columns
-    if len(df.columns) <= max(repo_url_col_idx, already_exists_col_idx, logical_checks_col_idx, user_repo_col_idx):
-        print(colored("Warning: Not enough columns to perform duplicate preprocessing", "yellow"))
-        return df
+    if len(df.columns) <= max(repo_url_col_idx, user_repo_col_idx):
+        print(colored("Warning: Not enough columns to perform duplicate identification", "yellow"))
+        return []
     
     # Get all repository URLs and normalize them
-    df_copy = df.copy()
-    normalized_urls = df_copy[repo_url_col_name].str.lower().str.strip()
+    normalized_urls = df[repo_url_col_name].str.lower().str.strip()
     
-    # Find duplicates within the sheet
-    duplicate_mask = normalized_urls.duplicated(keep='first')  # Keep first occurrence, mark rest as duplicates
+    # Find duplicates within the sheet (keep first occurrence, mark rest for deletion)
+    duplicate_mask = normalized_urls.duplicated(keep='first')
     # Exclude blank/empty URLs from being considered duplicates
     duplicate_mask &= normalized_urls != ""
     duplicate_count = duplicate_mask.sum()
     
-    # Check against labeling tool existing repos
-    lt_duplicate_count = 0
-    for idx, row in df_copy.iterrows():
-        user_repo_val = row.iloc[user_repo_col_idx] if user_repo_col_idx < len(row) else ''
-        if isinstance(user_repo_val, str) and '/' in user_repo_val.strip():
-            user_repo_clean = user_repo_val.strip().lower()
-            if user_repo_clean in existing_lt_repos:
-                df_copy.loc[idx, already_exists_col_name] = "Yes"
-                df_copy.loc[idx, logical_checks_col_name] = "No"
-                lt_duplicate_count += 1
-                print(f"  Found in labeling tool: {user_repo_val}")
+    # Get indices of duplicates to delete
+    duplicate_indices = df[duplicate_mask].index.tolist()
     
     if duplicate_count > 0:
-        print(f"Found {duplicate_count} duplicate repositories within the sheet")
-        
-        # Mark duplicates in the DataFrame
-        df_copy.loc[duplicate_mask, already_exists_col_name] = "Yes"
-        df_copy.loc[duplicate_mask, logical_checks_col_name] = "No"
+        print(f"Found {duplicate_count} duplicate repositories to delete")
         
         # Print duplicate information
         duplicate_urls = normalized_urls[duplicate_mask].unique()
@@ -922,17 +904,13 @@ def preprocess_duplicates(df, column_indices, existing_lt_repos):
                 first_row = matching_indices[0] + 2  # Convert to sheet row number
                 duplicate_rows = [idx + 2 for idx in matching_indices[1:]]  # Convert to sheet row numbers
                 print(f"  Duplicate found: {url}")
-                print(f"    First occurrence: Row {first_row}")
-                print(f"    Duplicates marked: Rows {duplicate_rows}")
+                print(f"    Keeping: Row {first_row}")
+                print(f"    Deleting: Rows {duplicate_rows}")
     
-    if lt_duplicate_count > 0:
-        print(f"Found {lt_duplicate_count} repositories that already exist in labeling tool")
+    # Note: We no longer mark LT repos as duplicates - we process them for data
+    print("Note: Repositories existing in labeling tool will be processed for data collection")
     
-    total_duplicates = duplicate_count + lt_duplicate_count
-    if total_duplicates == 0:
-        print("No duplicates found")
-    
-    return df_copy
+    return duplicate_indices
 
 def print_column_configuration():
     """
@@ -1072,7 +1050,7 @@ def evaluate_repo_with_resume(user_repo, row, all_repos_df, column_indices, exis
     results = {
         'repo': user_repo, 'should_add': False, 'reason': "",
         'language_name': "N/A", 'language_percent': 0, 'star_count': 0, 
-        'loc_count': "N/A", 'already_exists': "No", 'manual_review': False,
+        'loc_count': "N/A", 'manual_review': False,
     }
     
     # Pre-populate results with existing data
@@ -1080,7 +1058,6 @@ def evaluate_repo_with_resume(user_repo, row, all_repos_df, column_indices, exis
     percentage_col = f"col_{column_indices['percentage']}"
     stars_col = f"col_{column_indices['stars']}"
     loc_col = f"col_{column_indices['loc']}"
-    already_exists_col = f"col_{column_indices['already_exists']}"
     
     if majority_lang_col in row.index and not pd.isna(row[majority_lang_col]) and str(row[majority_lang_col]).strip():
         results['language_name'] = str(row[majority_lang_col]).strip()
@@ -1100,33 +1077,9 @@ def evaluate_repo_with_resume(user_repo, row, all_repos_df, column_indices, exis
     if loc_col in row.index and not pd.isna(row[loc_col]) and str(row[loc_col]).strip():
         results['loc_count'] = str(row[loc_col]).strip()
     
-    if already_exists_col in row.index and not pd.isna(row[already_exists_col]) and str(row[already_exists_col]).strip():
-        results['already_exists'] = str(row[already_exists_col]).strip()
-    
-    # 1. Check if it already exists in the labeling tool (if not already checked)
-    if results['already_exists'].lower() != "yes":
-        if user_repo.lower() in existing_lt_repos:
-            results['reason'] = "Exists in Labeling Tool"
-            results['already_exists'] = "Yes"
-            print(f"=== Resume evaluation completed in {time.time() - start_time:.2f} seconds ===\n")
-            return results
-    
-    # 2. Check if it already exists in the sheet (if not already checked)
-    if results['already_exists'].lower() != "yes":
-        repo_url_col_name = f"col_{column_indices['repo_url']}"
-        added_col_name = f"col_{column_indices['added']}"
-        
-        if repo_url_col_name in all_repos_df.columns and added_col_name in all_repos_df.columns:
-            repo_url_lower = f"https://github.com/{user_repo}".lower()
-            normalized_urls = all_repos_df[repo_url_col_name].str.lower().str.strip()
-            matching_rows = all_repos_df[normalized_urls == repo_url_lower]
-            
-            if not matching_rows.empty:
-                if matching_rows[added_col_name].str.lower().eq('yes').any():
-                    results['reason'] = "Exists in Sheet"
-                    results['already_exists'] = "Yes"
-                    print(f"=== Resume evaluation completed in {time.time() - start_time:.2f} seconds ===\n")
-                    return results
+    # Note: We no longer check "already_exists" status - we process all repos
+    # Repositories in LT will be processed for data collection
+    # Duplicates will be handled by deletion logic in main()
     
     # 3. Perform language and stars check if missing
     if missing_checks['language_check'] or missing_checks['stars_check']:
@@ -1194,25 +1147,32 @@ def evaluate_repo_with_resume(user_repo, row, all_repos_df, column_indices, exis
         # Determine if LOC check passed
         loc_check_passed = False
         if isinstance(current_loc, int) and current_loc > 0:
-            primary_lang_eval_settings = get_language_evaluation_settings(results['language_name'])
-            required_loc = get_required_loc_for_stars(current_stars, primary_lang_eval_settings['loc_thresholds'])
-            loc_check_passed = current_loc >= required_loc
+            try:
+                primary_lang_eval_settings = get_language_evaluation_settings(results['language_name'])
+                required_loc = get_required_loc_for_stars(current_stars, primary_lang_eval_settings['loc_thresholds'])
+                loc_check_passed = current_loc >= required_loc
+            except KeyError:
+                # For unconfigured languages, use target language settings as fallback
+                print(f"[Resume] Language '{results['language_name']}' not configured, using target language settings")
+                required_loc = get_required_loc_for_stars(current_stars, eval_settings['loc_thresholds'])
+                loc_check_passed = current_loc >= required_loc
         elif str(current_loc).upper().startswith("ERROR"):
             # Manual review for LOC errors
             results['manual_review'] = True
         
         # Final evaluation logic
-        primary_lang_eval_settings = get_language_evaluation_settings(results['language_name'])
+        try:
+            primary_lang_eval_settings = get_language_evaluation_settings(results['language_name'])
+        except KeyError:
+            primary_lang_eval_settings = eval_settings
         
         primary_lang_checks_passed = [
-            results['already_exists'] == "No",
             primary_lang_percent >= primary_lang_eval_settings['min_percentage'],
             current_stars >= primary_lang_eval_settings['min_stars'],
             loc_check_passed
         ]
         
         target_lang_checks_passed = [
-            results['already_exists'] == "No",
             target_lang_percent >= eval_settings['min_percentage'],
             current_stars >= eval_settings['min_stars'],
             loc_check_passed
@@ -1224,8 +1184,6 @@ def evaluate_repo_with_resume(user_repo, row, all_repos_df, column_indices, exis
             results['reason'] = "LOC check error – manual review required"
         elif not results['should_add']:
             reasons = []
-            if results['already_exists'] == "Yes": 
-                reasons.append("Exists in Labeling Tool/Sheet")
             if target_lang_percent < eval_settings['min_percentage'] and primary_lang_percent < primary_lang_eval_settings['min_percentage']:
                 reasons.append(f"Language percentage too low (Target: {target_lang_percent:.2f}%, Primary: {primary_lang_percent:.2f}%)")
             if current_stars < eval_settings['min_stars'] and current_stars < primary_lang_eval_settings['min_stars']:
@@ -1269,9 +1227,19 @@ def handle_repo_movement(user_repo: str, majority_language: str, current_sheet: 
     # If the repo should stay in the current sheet, no action needed
     if target_sheet == current_sheet:
         return False
+    
+    # Check if this is an unconfigured language being moved to Scrap
+    try:
+        get_language_sheet_name(majority_language)
+        language_status = "configured"
+    except (KeyError, FileNotFoundError):
+        language_status = "unconfigured"
         
     print(f"\n[Movement] Repository {user_repo} has majority language {majority_language}")
     print(f"[Movement] Should move from {current_sheet} to {target_sheet}")
+    
+    if target_sheet == "Scrap" and language_status == "unconfigured":
+        print(colored(f"[Movement] ⚠️  Moving to Scrap sheet - language '{majority_language}' not configured in language_configs.json", "yellow"))
     
     try:
         # Get Google Sheets client and spreadsheet
@@ -1335,45 +1303,43 @@ def main():
     print("\n=== Step 4: Updating Labeling Tool Data ===")
     update_data_from_LT(CREDS_JSON_PATH, SPREADSHEET_KEY, SCOPE, SHEET_NAME, column_indices)
 
-    # 5. Preprocess duplicates - mark all duplicate repositories except the first occurrence
-    potential_repos_df = preprocess_duplicates(potential_repos_df, column_indices, existing_lt_repos)
+    # 5. Identify and delete duplicate repositories
+    print("\n=== Step 5: Identifying Duplicates for Deletion ===")
+    duplicate_indices = identify_duplicates_for_deletion(potential_repos_df, column_indices, existing_lt_repos)
 
-    # 6. Update sheet with duplicate markings
-    try:
-        client = _get_gspread_client(CREDS_JSON_PATH, SCOPE)
-        sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(SHEET_NAME)
-        
-        # Update Already Exists and Logical Checks columns for duplicates
-        already_exists_col_idx = column_indices['already_exists'] + 1  # +1 for 1-based indexing
-        logical_checks_col_idx = column_indices['logical_checks'] + 1  # +1 for 1-based indexing
-        
-        already_exists_col_name = f"col_{column_indices['already_exists']}"
-        logical_checks_col_name = f"col_{column_indices['logical_checks']}"
-        
-        # Find rows that were marked as duplicates
-        duplicate_rows = potential_repos_df[
-            (potential_repos_df[already_exists_col_name] == "Yes") & 
-            (potential_repos_df[logical_checks_col_name] == "No")
-        ]
-        
-        if not duplicate_rows.empty:
-            print(f"Updating {len(duplicate_rows)} duplicate rows in the sheet...")
-            cell_updates = []
+    if duplicate_indices:
+        print(f"\n=== Step 6: Deleting {len(duplicate_indices)} Duplicate Rows ===")
+        try:
+            client = _get_gspread_client(CREDS_JSON_PATH, SCOPE)
+            sheet = client.open_by_key(SPREADSHEET_KEY).worksheet(SHEET_NAME)
             
-            for idx, row in duplicate_rows.iterrows():
+            # Sort indices in descending order to avoid shifting issues
+            duplicate_indices.sort(reverse=True)
+            
+            for idx in duplicate_indices:
                 sheet_row = idx + 2  # Convert to sheet row number (0-based index + 1 for header + 1 for 1-based)
-                cell_updates.extend([
-                    gspread.Cell(sheet_row, already_exists_col_idx, "Yes"),
-                    gspread.Cell(sheet_row, logical_checks_col_idx, "No")
-                ])
+                try:
+                    sheet.delete_rows(sheet_row)
+                    print(f"  ❌ Deleted duplicate row {sheet_row}")
+                except Exception as e:
+                    print(f"  ⚠️ Failed to delete row {sheet_row}: {e}")
             
-            # Batch update for efficiency
-            if cell_updates:
-                sheet.update_cells(cell_updates, value_input_option='USER_ENTERED')
-                print(colored(f"Successfully marked {len(duplicate_rows)} duplicates in the sheet.", "blue"))
-        
-    except Exception as e:
-        print(colored(f"Error updating sheet with duplicate markings: {e}", "red"))
+            print(colored(f"Successfully deleted {len(duplicate_indices)} duplicate rows from the sheet.", "blue"))
+            
+            # Refresh the DataFrame after deletions
+            print("\n=== Refreshing Data After Deletions ===")
+            potential_repos_df, header = fetch_sheet_data(
+                CREDS_JSON_PATH,
+                SPREADSHEET_KEY,
+                SCOPE,
+                sheet_name=SHEET_NAME
+            )
+            print(f"Refreshed data: {len(potential_repos_df)} rows remaining")
+            
+        except Exception as e:
+            print(colored(f"Error deleting duplicate rows: {e}", "red"))
+    else:
+        print("No duplicates found to delete.")
 
     # 7. Resume Logic: Find rows that need processing
     # A row needs processing if 'Logical Checks' column is empty and URL is not empty.
@@ -1410,20 +1376,7 @@ def main():
                 # Use the resume-aware evaluation that only performs missing checks
                 result = evaluate_repo_with_resume(user_repo, row, potential_repos_df, column_indices, existing_lt_repos, row_number)
                 
-                # Check if repo should be moved to a different sheet based on majority language
-                if result['language_name'] != "N/A":
-                    repo_moved = handle_repo_movement(user_repo, result['language_name'], SHEET_NAME)
-                    if repo_moved:
-                        print(colored(f"🔄 MOVED:     {result['repo']} (Row {row_number})", "cyan"), f"- Moved to {get_destination_sheet_for_language(result['language_name'])} sheet")
-                        continue  # Skip writing results since repo was moved
-                
-                # Print to console
-                if result['should_add']:
-                    print(colored(f"✔ ADD:       {result['repo']} (Row {row_number})", "green"), f"- {result['reason']}")
-                else:
-                    print(colored(f"✖ DON'T ADD: {result['repo']} (Row {row_number})", "yellow"), f"- {result['reason']}")
-
-                # Write results back to the sheet
+                # Write results back to the sheet first (to preserve language data)
                 update_sheet_with_results(
                     CREDS_JSON_PATH,
                     SPREADSHEET_KEY,
@@ -1433,6 +1386,19 @@ def main():
                     result,
                     column_indices,
                 )
+                
+                # Check if repo should be moved to a different sheet based on majority language
+                if result['language_name'] != "N/A":
+                    repo_moved = handle_repo_movement(user_repo, result['language_name'], SHEET_NAME)
+                    if repo_moved:
+                        print(colored(f"🔄 MOVED:     {result['repo']} (Row {row_number})", "cyan"), f"- Moved to {get_destination_sheet_for_language(result['language_name'])} sheet")
+                        continue  # Skip further processing since repo was moved
+                
+                # Print to console
+                if result['should_add']:
+                    print(colored(f"✔ ADD:       {result['repo']} (Row {row_number})", "green"), f"- {result['reason']}")
+                else:
+                    print(colored(f"✖ DON'T ADD: {result['repo']} (Row {row_number})", "yellow"), f"- {result['reason']}")
             else:
                 print(colored(f"✖ SKIPPING:  Row {row_number}", "red"), f"- Malformed user/repo from Column A: '{user_repo}'")
 
@@ -1440,6 +1406,19 @@ def main():
             print(colored(f"✖ ERROR:     {repo_url} (Row {row_number})", "red"), f"- {str(e)}")
 
     print("\n--- Evaluation Complete ---")
+    
+    # Summary of movements to Scrap sheet
+    print("\n=== Movement Summary ===")
+    print("Repositories with unconfigured languages are automatically moved to the 'Scrap' sheet.")
+    print("Currently configured languages in language_configs.json:")
+    try:
+        from config_utils import get_all_language_configs
+        all_languages = get_all_language_configs()
+        configured_languages = list(all_languages.keys())
+        print(f"  - {', '.join(configured_languages)}")
+    except Exception as e:
+        print(f"  - Error loading language configs: {e}")
+    print("Any language not in this list will be moved to the 'Scrap' sheet.")
 
 
 if __name__ == "__main__":

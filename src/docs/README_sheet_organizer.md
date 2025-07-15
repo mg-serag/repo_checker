@@ -11,6 +11,7 @@
 - **Majority Language Detection**: Based on actual code analysis, not configuration
 - **Data Preservation**: Maintains all repository data during movement
 - **Cross-sheet Coordination**: Handles complex multi-sheet operations
+- **Smart Insertion**: Inserts repositories at the first empty row (where Repository and Actual Link are empty)
 
 ### 🧹 Duplicate Management
 - **Intra-sheet Deduplication**: Removes duplicates within individual sheets
@@ -112,6 +113,33 @@ moved = process_single_repo_movement(
 
 ## Repository Movement Logic
 
+### Smart Insertion Behavior
+When moving repositories between sheets, the system now inserts them at the first row where both:
+- **Repository column (Column A)** is empty
+- **Actual Link column (Column C)** is empty
+
+This ensures that:
+- Repositories fill gaps in the sheet instead of always appending to the end
+- Empty rows are utilized efficiently
+- The sheet maintains a compact structure
+- New repositories are placed in logical positions
+
+### Movement Examples
+```python
+# Before: Repository appended to end of sheet
+# After: Repository inserted at first empty row
+
+# Example sheet structure:
+# Row 1: Header
+# Row 2: repo1/example (filled)
+# Row 3: repo2/example (filled)  
+# Row 4: (empty - Repository and Actual Link both empty)
+# Row 5: repo3/example (filled)
+# Row 6: (empty - Repository and Actual Link both empty)
+
+# Moving new repository will insert at Row 4, not append to end
+```
+
 ### Decision Process
 ```python
 def get_destination_sheet_for_language(language):
@@ -128,7 +156,7 @@ def get_destination_sheet_for_language(language):
 1. **Detection**: Identify repositories with mismatched languages
 2. **Validation**: Verify target sheet exists and is accessible
 3. **Preparation**: Prepare repository data for movement
-4. **Execution**: Move repository to target sheet
+4. **Smart Insertion**: Find first empty row and insert repository there
 5. **Cleanup**: Remove original entry and update references
 6. **Verification**: Confirm successful movement
 
@@ -136,11 +164,11 @@ def get_destination_sheet_for_language(language):
 ```python
 # Python repository in Java sheet
 Source: Java sheet, Row 45, "scikit-learn/scikit-learn" (Python 95%)
-Target: Python sheet, New row, Complete data transfer
+Target: Python sheet, First empty row, Complete data transfer
 
 # JavaScript repository in Python sheet  
 Source: Python sheet, Row 123, "facebook/react" (JavaScript 94%)
-Target: JS/TS sheet, New row, Complete data transfer
+Target: JS/TS sheet, First empty row, Complete data transfer
 ```
 
 ## Duplicate Management

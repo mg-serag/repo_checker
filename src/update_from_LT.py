@@ -7,10 +7,10 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
+import time
+from requests.exceptions import ConnectionError
 
 # --- Script Configuration ---
-CREDS_JSON_PATH = os.path.join(os.path.dirname(__file__), 'creds.json')
-SCOPE = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 from config_utils import get_spreadsheet_key
 SPREADSHEET_KEY = get_spreadsheet_key()
 
@@ -22,6 +22,12 @@ LT_TOKEN = get_lt_token()
 # Import centralized configuration functions
 from config_utils import (
     get_all_language_configs
+)
+
+# Import centralized sheet utilities
+from sheet_utils import (
+    get_column_indices, fetch_sheet_data, update_sheet_cells,
+    _get_gspread_client, get_spreadsheet_key, print_column_configuration
 )
 
 def get_sheets_to_update():
@@ -87,118 +93,6 @@ def get_sheets_to_update():
                 'description': 'C# repositories'
             }
         }
-
-# --- Column Configuration ---
-# Define expected column headers and their default indices (0-based)
-COLUMN_CONFIG = {
-    'user_repo': {
-        'headers': ['repository'],
-        'default_index': 0,  # Column A
-        'description': 'Repository name in USER/REPO format'
-    },
-    'repo_url': {
-        'headers': ['actual repository link'],
-        'default_index': 2,  # Column C
-        'description': 'Full GitHub repository URL'
-    },
-    'added': {
-        'headers': ['added'],
-        'default_index': 14,  # Column O
-        'description': 'Whether repo was added to final list'
-    },
-    'tasks_count_lt': {
-        'headers': ['tasks count in lt'],
-        'default_index': 15,  # Column P
-        'description': 'Total tasks count in labeling tool'
-    },
-    'improper_lt': {
-        'headers': ['improper in lt'],
-        'default_index': 16,  # Column Q
-        'description': 'Count of improper tasks in labeling tool'
-    },
-    'batch_link': {
-        'headers': ['batch link'],
-        'default_index': 17,  # Column R
-        'description': 'Link to the batch in labeling tool'
-    },
-    'addition_date': {
-        'headers': ['addition date'],
-        'default_index': 18,  # Column S
-        'description': 'Date when the repository was added to labeling tool'
-    }
-}
-
-# --- Google Sheets Helper ---
-
-def get_column_indices(header):
-    """
-    Get column indices from header using the COLUMN_CONFIG.
-    Shows which columns were found by header name vs. using defaults.
-    """
-    header_lower = [h.lower().strip() for h in header]
-    indices = {}
-    
-    print("\n--- Column Mapping Results ---")
-    
-    for column_key, config in COLUMN_CONFIG.items():
-        found_index = None
-        found_header = None
-        
-        # Try to find the column by header name
-        for possible_header in config['headers']:
-            try:
-                found_index = header_lower.index(possible_header.lower())
-                found_header = possible_header
-                break
-            except ValueError:
-                continue
-        
-        if found_index is not None:
-            indices[column_key] = found_index
-            excel_col = chr(65 + found_index) if found_index < 26 else f"Column {found_index + 1}"
-            print(f"  ✓ {column_key:15} -> {excel_col:8} (found header: '{found_header}')")
-        else:
-            indices[column_key] = config['default_index']
-            excel_col = chr(65 + config['default_index']) if config['default_index'] < 26 else f"Column {config['default_index'] + 1}"
-            print(f"  ! {column_key:15} -> {excel_col:8} (using default, expected: {config['headers']})")
-    
-    print("--- End Column Mapping ---\n")
-    return indices
-
-# Build a global credentials object lazily so we don't recreate it for every
-# Sheets call.
-_GCRED = None
-
-def _get_gspread_client(json_path, scopes):
-    """Return a cached gspread client authorised with the service account."""
-    global _GCRED
-    if _GCRED is None:
-        _GCRED = Credentials.from_service_account_file(json_path, scopes=scopes)
-    return gspread.Client(auth=_GCRED)
-
-def fetch_sheet_data(json_path, spreadsheet_key, scope, sheet_name=None):
-    """
-    Fetches data and header from a Google Sheet.
-    """
-    client = _get_gspread_client(json_path, scope)
-    spreadsheet = client.open_by_key(spreadsheet_key)
-
-    if sheet_name:
-        sheet = spreadsheet.worksheet(sheet_name)
-    else:
-        sheet = spreadsheet.sheet1  # Default to the first sheet
-
-    all_values = sheet.get_all_values()
-    if not all_values:
-        return pd.DataFrame(), []
-        
-    header = all_values[0]
-    data = all_values[1:]
-    
-    # Create a DataFrame with enough columns to match the header length
-    df = pd.DataFrame(data, columns=[f'col_{i}' for i in range(len(header))])
-    
-    return df, header
 
 # --- Labeling Tool API Functions ---
 
@@ -292,6 +186,8 @@ def aggregate_batch_data(batches):
     # Initialize aggregated values
     total_conversations = 0
     total_improper = 0
+    total_completed = 0
+    total_unclaimed = 0
     earliest_date = None
     batch_links = []
     batch_names = []
@@ -311,6 +207,16 @@ def aggregate_batch_data(batches):
         batch_stats = batch.get("batchStats", {}) or {}
         improper = batch_stats.get("improper", 0) if batch_stats else 0
         total_improper += improper
+        
+        # Aggregate completed and unclaimed (pending) counts from batch stats
+        completed_count = batch_stats.get("completed", 0) if batch_stats else 0
+        unclaimed_count = batch_stats.get("pending", 0) if batch_stats else 0
+        total_completed += completed_count
+        total_unclaimed += unclaimed_count
+        
+        # Log task status counts for debugging
+        if completed_count > 0 or unclaimed_count > 0:
+            print(f"    Batch {batch_name}: {completed_count} completed, {unclaimed_count} unclaimed tasks")
         
         # Track earliest creation date
         created_at = batch.get("createdAt")
@@ -340,17 +246,20 @@ def aggregate_batch_data(batches):
             "batch_links": batch_links,
             "earliest_date": earliest_date.isoformat() if earliest_date else None,
             "total_conversations": total_conversations,
-            "total_improper": total_improper
+            "total_improper": total_improper,
+            "total_completed": total_completed,
+            "total_unclaimed": total_unclaimed
         }
     }
     
     return result
 
-def update_sheet_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_indices, project_id):
+def update_sheet_from_LT(sheet_name, column_indices, project_id):
     """
     Updates the sheet with data from the labeling tool for all repositories.
     Now handles multiple batch parts and aggregates data from all parts.
-    Updates columns O (Added), P (Tasks Count in LT), Q (Improper in LT), R (Batch link), and S (Addition Date).
+    Updates columns K (Added), L (Tasks Count in LT), M (Improper in LT), 
+    N (Completed in LT), O (Unclaimed in LT), P (Batch link), and Q (Addition Date).
     """
     print(f"\n=== Starting Labeling Tool Data Update for {sheet_name} (Project ID: {project_id}) ===")
     
@@ -361,37 +270,37 @@ def update_sheet_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_i
         return
     
     try:
-        # Fetch current sheet data
-        client = _get_gspread_client(json_path, scope)
-        sheet = client.open_by_key(spreadsheet_key).worksheet(sheet_name)
-        all_values = sheet.get_all_values()
+        # Fetch current sheet data using centralized utilities
+        sheet_df, header = fetch_sheet_data(sheet_name)
         
-        if not all_values or len(all_values) < 2:
+        if sheet_df.empty:
             print(colored("Sheet is empty or has no data rows.", "yellow"))
             return
         
-        header = all_values[0]
-        data_rows = all_values[1:]
+        data_rows = sheet_df.values.tolist()
         
         # Get column indices for the new columns
-        user_repo_col_idx = column_indices['user_repo']
+        user_repo_col_idx = column_indices['repository']
         added_col_0_idx = column_indices['added']
         
         added_col_idx_1 = column_indices['added'] + 1
         tasks_count_col_idx_1 = column_indices['tasks_count_lt'] + 1
         improper_col_idx_1 = column_indices['improper_lt'] + 1
+        completed_col_idx_1 = column_indices['completed_lt'] + 1
+        unclaimed_col_idx_1 = column_indices['unclaimed_lt'] + 1
         batch_link_col_idx_1 = column_indices['batch_link'] + 1
         addition_date_col_idx_1 = column_indices['addition_date'] + 1
         
         # Check if we have enough columns in the data
         max_col_needed = max(user_repo_col_idx, column_indices['added'], 
-                           column_indices['tasks_count_lt'], column_indices['improper_lt'], 
+                           column_indices['tasks_count_lt'], column_indices['improper_lt'],
+                           column_indices['completed_lt'], column_indices['unclaimed_lt'],
                            column_indices['batch_link'], column_indices['addition_date'])
         
         if max_col_needed >= len(data_rows[0]) if data_rows else 0:
             print(colored(f"Warning: Sheet may not have enough columns. Need at least {max_col_needed + 1} columns.", "yellow"))
         
-        print(f"Updating columns: O (Added), P (Tasks Count), Q (Improper), R (Batch Link), S (Addition Date)")
+        print(f"Updating columns: K (Added), L (Tasks Count), M (Improper), N (Completed), O (Unclaimed), P (Batch Link), Q (Addition Date)")
         print(f"Processing {len(data_rows)} data rows...")
         print(f"Batch data contains {len(batch_data)} entries")
         
@@ -439,6 +348,8 @@ def update_sheet_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_i
                         aggregated_stats = aggregated_repo_data.get("aggregated_stats", {})
                         total_tasks = aggregated_stats.get("total_conversations", 0)
                         improper_tasks = aggregated_stats.get("total_improper", 0)
+                        completed_tasks = aggregated_stats.get("total_completed", 0)
+                        unclaimed_tasks = aggregated_stats.get("total_unclaimed", 0)
                         
                         # Create batch link - use main batch or show summary if multiple
                         if batch_id:
@@ -461,6 +372,8 @@ def update_sheet_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_i
                         cell_updates.extend([
                             gspread.Cell(sheet_row, tasks_count_col_idx_1, total_tasks),
                             gspread.Cell(sheet_row, improper_col_idx_1, improper_tasks),
+                            gspread.Cell(sheet_row, completed_col_idx_1, completed_tasks),
+                            gspread.Cell(sheet_row, unclaimed_col_idx_1, unclaimed_tasks),
                             gspread.Cell(sheet_row, batch_link_col_idx_1, batch_link),
                             gspread.Cell(sheet_row, addition_date_col_idx_1, addition_date),
                         ])
@@ -470,6 +383,10 @@ def update_sheet_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_i
                             print(f"  Refreshed aggregated data for {user_repo} in row {sheet_row}: {total_tasks} tasks from {aggregated_stats['total_batches']} batches")
                         else:
                             print(f"  Refreshed data for {user_repo} in row {sheet_row}: {total_tasks} tasks")
+                        
+                        # Log task status breakdown
+                        if completed_tasks > 0 or unclaimed_tasks > 0:
+                            print(f"    Task breakdown: {completed_tasks} completed, {unclaimed_tasks} unclaimed, {improper_tasks} improper")
                     except Exception as e:
                         print(f"  Error processing existing repo {user_repo} in row {sheet_row}: {e}")
                 # else: Do nothing, as requested for "Yes" rows not found in LT
@@ -482,6 +399,8 @@ def update_sheet_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_i
                         aggregated_stats = aggregated_repo_data.get("aggregated_stats", {})
                         total_tasks = aggregated_stats.get("total_conversations", 0)
                         improper_tasks = aggregated_stats.get("total_improper", 0)
+                        completed_tasks = aggregated_stats.get("total_completed", 0)
+                        unclaimed_tasks = aggregated_stats.get("total_unclaimed", 0)
                         
                         # Create batch link - use main batch or show summary if multiple
                         if batch_id:
@@ -505,6 +424,8 @@ def update_sheet_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_i
                             gspread.Cell(sheet_row, added_col_idx_1, "Yes"),
                             gspread.Cell(sheet_row, tasks_count_col_idx_1, total_tasks),
                             gspread.Cell(sheet_row, improper_col_idx_1, improper_tasks),
+                            gspread.Cell(sheet_row, completed_col_idx_1, completed_tasks),
+                            gspread.Cell(sheet_row, unclaimed_col_idx_1, unclaimed_tasks),
                             gspread.Cell(sheet_row, batch_link_col_idx_1, batch_link),
                             gspread.Cell(sheet_row, addition_date_col_idx_1, addition_date)
                         ])
@@ -522,25 +443,30 @@ def update_sheet_from_LT(json_path, spreadsheet_key, scope, sheet_name, column_i
                         gspread.Cell(sheet_row, added_col_idx_1, "No"),
                         gspread.Cell(sheet_row, tasks_count_col_idx_1, ""),
                         gspread.Cell(sheet_row, improper_col_idx_1, ""),
+                        gspread.Cell(sheet_row, completed_col_idx_1, ""),
+                        gspread.Cell(sheet_row, unclaimed_col_idx_1, ""),
                         gspread.Cell(sheet_row, batch_link_col_idx_1, ""),
                         gspread.Cell(sheet_row, addition_date_col_idx_1, "")
                     ])
         
-        # Batch update all cells for efficiency
+        # Batch update all cells for efficiency using centralized utilities
         if cell_updates:
-            sheet.update_cells(cell_updates, value_input_option='USER_ENTERED')
-            log_parts = []
-            if updated_count > 0:
-                log_parts.append(f"marked {updated_count} new repos as added")
-            if refreshed_count > 0:
-                log_parts.append(f"refreshed counts for {refreshed_count} existing repos")
-            if skipped_count > 0:
-                log_parts.append(f"skipped {skipped_count} rows with insufficient data")
-            
-            if log_parts:
-                print(colored(f"\nSuccessfully updated {sheet_name}: " + " and ".join(log_parts) + ".", "green"))
+            success = update_sheet_cells(sheet_name, cell_updates)
+            if success:
+                log_parts = []
+                if updated_count > 0:
+                    log_parts.append(f"marked {updated_count} new repos as added")
+                if refreshed_count > 0:
+                    log_parts.append(f"refreshed counts for {refreshed_count} existing repos")
+                if skipped_count > 0:
+                    log_parts.append(f"skipped {skipped_count} rows with insufficient data")
+                
+                if log_parts:
+                    print(colored(f"\nSuccessfully updated {sheet_name}: " + " and ".join(log_parts) + ".", "green"))
+                else:
+                    print(colored(f"\nNo updatable repositories found in {sheet_name} matching the criteria in the labeling tool.", "yellow"))
             else:
-                print(colored(f"\nNo updatable repositories found in {sheet_name} matching the criteria in the labeling tool.", "yellow"))
+                print(colored(f"Failed to update {sheet_name}.", "red"))
         else:
             print(colored(f"No updates were made to {sheet_name}.", "yellow"))
             
@@ -558,7 +484,7 @@ def print_configuration():
     print("=" * 80)
     print("UPDATE FROM LABELING TOOL CONFIGURATION")
     print("=" * 80)
-    print(f"Spreadsheet Key: {SPREADSHEET_KEY}")
+    print(f"Spreadsheet Key: {get_spreadsheet_key()}")
     print(f"Sheets to Update: {len(sheets_to_update)}")
     print("-" * 80)
     
@@ -569,11 +495,13 @@ def print_configuration():
         print()
     
     print("Columns to Update:")
-    print("  O - Added (Yes/No)")
-    print("  P - Tasks Count in LT")
-    print("  Q - Improper in LT")
-    print("  R - Batch Link")
-    print("  S - Addition Date")
+    print("  K - Added (Yes/No)")
+    print("  L - Tasks Count in LT")
+    print("  M - Improper in LT")
+    print("  N - Completed in LT")
+    print("  O - Unclaimed in LT")
+    print("  P - Batch Link")
+    print("  Q - Addition Date")
     print("=" * 80)
     print()
 
@@ -595,44 +523,63 @@ def main():
         print(f"Processing Sheet: {sheet_name}")
         print(f"{'='*60}")
         
-        try:
-            # Fetch sheet data to get headers
-            print(f"Fetching data from sheet: {sheet_name}")
-            sheet_df, header = fetch_sheet_data(
-                CREDS_JSON_PATH,
-                SPREADSHEET_KEY,
-                SCOPE,
-                sheet_name=sheet_name
-            )
+        retries = 3
+        delay = 5  # seconds
+
+        for attempt in range(retries):
+            try:
+                # Fetch sheet data to get headers using centralized utilities
+                print(f"Fetching data from sheet: {sheet_name}")
+                sheet_df, header = fetch_sheet_data(sheet_name)
+                
+                if sheet_df.empty:
+                    print(colored(f"Sheet {sheet_name} is empty or has no data.", "yellow"))
+                    break
+                
+                print(f"Found {len(sheet_df)} rows in {sheet_name}")
+                
+                # Get column indices from header using centralized utilities
+                column_indices = get_column_indices(header)
+                
+                # Update the sheet with labeling tool data
+                update_sheet_from_LT(
+                    sheet_name,
+                    column_indices,
+                    config['project_id']
+                )
+                
+                break  # Success, exit retry loop
+                
+            except (ConnectionError, gspread.exceptions.APIError) as e:
+                is_retryable = isinstance(e, ConnectionError)
+                if isinstance(e, gspread.exceptions.APIError):
+                    # gspread.exceptions.APIError can be a dict. Let's check safely
+                    try:
+                        # Heuristic to check for API error structure
+                        if 'error' in e.args[0] and e.args[0]['error']['code'] in [429, 500, 503]:
+                            is_retryable = True
+                    except (AttributeError, IndexError, TypeError):
+                        pass
+
+                if is_retryable and attempt < retries - 1:
+                    print(colored(f"Connection or API error for sheet '{sheet_name}'. Retrying in {delay}s...", "yellow"))
+                    time.sleep(delay)
+                    delay *= 2  # Exponential backoff
+                else:
+                    print(colored(f"Failed to process sheet '{sheet_name}' after {retries} attempts: {e}", "red"))
+                    break  # Failed after retries, exit retry loop
             
-            if sheet_df.empty:
-                print(colored(f"Sheet {sheet_name} is empty or has no data.", "yellow"))
-                continue
-            
-            print(f"Found {len(sheet_df)} rows in {sheet_name}")
-            
-            # Get column indices from header
-            column_indices = get_column_indices(header)
-            
-            # Update the sheet with labeling tool data
-            update_sheet_from_LT(
-                CREDS_JSON_PATH,
-                SPREADSHEET_KEY,
-                SCOPE,
-                sheet_name,
-                column_indices,
-                config['project_id']
-            )
-            
-        except gspread.exceptions.SpreadsheetNotFound:
-            print(colored(f"Error: Spreadsheet not found. Make sure the key '{SPREADSHEET_KEY}' is correct and you have shared the sheet with the service account email.", "red"))
-            continue
-        except gspread.exceptions.WorksheetNotFound:
-            print(colored(f"Error: Worksheet '{sheet_name}' not found in the spreadsheet.", "red"))
-            continue
-        except Exception as e:
-            print(colored(f"Error processing sheet {sheet_name}: {e}", "red"))
-            continue
+            except gspread.exceptions.SpreadsheetNotFound:
+                print(colored(f"Error: Spreadsheet not found. Make sure the key '{get_spreadsheet_key()}' is correct and you have shared the sheet with the service account email.", "red"))
+                break
+            except gspread.exceptions.WorksheetNotFound:
+                print(colored(f"Error: Worksheet '{sheet_name}' not found in the spreadsheet.", "red"))
+                break
+            except Exception as e:
+                print(colored(f"An unexpected error occurred while processing sheet {sheet_name}: {e}", "red"))
+                import traceback
+                print(colored(f"Full traceback: {traceback.format_exc()}", "red"))
+                break
     
     print("\n--- Labeling Tool Data Update Complete ---")
 

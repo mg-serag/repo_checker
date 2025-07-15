@@ -201,7 +201,7 @@ def handle_repo_movement(user_repo, majority_language, current_sheet):
     target_sheet = get_destination_sheet_for_language(majority_language)
     
     if target_sheet != current_sheet:
-        # Move repository to correct sheet
+        # Move repository to correct sheet at first empty row
         moved = process_single_repo_movement(
             client, spreadsheet, current_sheet, user_repo, majority_language
         )
@@ -210,10 +210,17 @@ def handle_repo_movement(user_repo, majority_language, current_sheet):
     return False
 ```
 
+### Smart Insertion Behavior
+When repositories are moved between sheets, they are now inserted at the first row where both:
+- **Repository column (Column A)** is empty
+- **Actual Link column (Column C)** is empty
+
+This ensures efficient use of sheet space and maintains a compact structure.
+
 ### Movement Examples
-- Python repo in Java sheet → Move to Python sheet
-- JavaScript repo in Java sheet → Move to JS/TS sheet
-- Java repo in JS/TS sheet → Move to Java sheet
+- Python repo in Java sheet → Move to Python sheet at first empty row
+- JavaScript repo in Java sheet → Move to JS/TS sheet at first empty row
+- Java repo in JS/TS sheet → Move to Java sheet at first empty row
 
 ## Output Format
 
