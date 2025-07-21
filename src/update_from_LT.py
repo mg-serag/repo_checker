@@ -140,6 +140,7 @@ def fetch_all_batches_from_lt(project_id):
 def find_repository_batches(repo_key, batch_data):
     """
     Find all batches for a repository including parts (USER__REPO, USER__REPO_part_002, etc.)
+    and handles '__Public' suffix.
     
     Args:
         repo_key: Base repository key in USER__REPO format
@@ -154,8 +155,13 @@ def find_repository_batches(repo_key, batch_data):
         if batch is None:
             continue
             
+        # Normalize batch name by removing __Public suffix
+        normalized_batch_name = batch_name
+        if normalized_batch_name.endswith("__Public"):
+            normalized_batch_name = normalized_batch_name[:-8]
+            
         # Check for exact match or part match
-        if batch_name == repo_key or batch_name.startswith(f"{repo_key}_part_"):
+        if normalized_batch_name == repo_key or normalized_batch_name.startswith(f"{repo_key}_part_"):
             matching_batches.append(batch)
     
     return matching_batches

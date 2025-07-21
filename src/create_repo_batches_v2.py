@@ -33,6 +33,8 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 import csv # Added for compare_prs_and_skip_if_identical
 from datetime import datetime
+import sys
+from urllib.parse import urlparse
 
 # Token & config helpers
 from config_utils import (
@@ -60,7 +62,7 @@ LT_TOKEN = PERSONAL_LT_TOKEN        # Alias for clarity
 SWE_TOKEN = get_swe_token()
 
 # Default language settings (adjust if needed)
-TARGET_LANGUAGE = "JavaScript"
+TARGET_LANGUAGE = "C/C++"
 
 # Upload filtering mode - controls which PRs to include in the final CSV
 # All: Upload all PRs found in the JSON file (only do deduplication step to remove PRs already in SWE Bench)
@@ -69,16 +71,30 @@ TARGET_LANGUAGE = "JavaScript"
 UPLOAD_MODE = 'Logical'  # Options: 'All', 'Good', 'Logical'
 
 # Default count for spreadsheet repositories
-TARGET_REPO_COUNT = 5
+TARGET_REPO_COUNT = 10
 
 # Use manual repos or spreadsheet
 USE_MANUAL_REPOS = False  # Set to False to use spreadsheet
 
 # Manual repository list (only used if USE_MANUAL_REPOS = True)
 MANUAL_REPO_LIST = [
-    "apache/bookkeeper",
-    # "user/repo1",
-    # "user/repo2",
+    "elastic/kibana",
+    "prebid/Prebid.js",
+    "danny-avila/LibreChat",
+]
+
+MANUAL_REPO_LIST = [
+"apache/arrow",
+"CleverRaven/Cataclysm-DDA",
+"microsoft/ebpf-for-windows",
+"envoyproxy/envoy",
+"RobotLocomotion/drake",
+"root-project/root",
+"nasa/fprime",
+"actor-framework/actor-framework",
+"dragonflydb/dragonfly",
+"scylladb/scylladb",
+"qgis/QGIS",
 ]
 
 
@@ -140,6 +156,40 @@ def _construct_swe_url(instance_id: str) -> str:
         Constructed SWE URL
     """
     return f"https://swe-bench-plus.turing.com/instances/{instance_id}"
+
+def _make_api_request(method, url, **kwargs):
+    """
+    Centralized API request handler with error handling and retries.
+    Exits gracefully on 401 Unauthorized errors with a clear message.
+    """
+    headers = kwargs.setdefault("headers", {})
+    headers.update(_DEFAULT_HEADERS)
+    
+    # Determine which token is likely in use based on the URL
+    hostname = urlparse(url).hostname
+    token_name = "LT_TOKEN" if "eval.turing.com" in hostname else "SWE_TOKEN"
+
+    for attempt in range(3):  # Retry up to 3 times
+        try:
+            res = requests.request(method, url, **kwargs)
+            
+            if res.status_code == 401:
+                print(f"❌ FATAL: Received 401 Unauthorized for URL: {url}")
+                print(f"   The '{token_name}' has likely expired or is invalid.")
+                print(f"   Please update your token and try again.")
+                sys.exit(1)
+                
+            res.raise_for_status()
+            return res
+            
+        except requests.exceptions.RequestException as e:
+            if attempt < 2:
+                print(f"⚠️ Network error for {url}: {e}. Retrying in 5s...")
+                time.sleep(5)
+            else:
+                print(f"❌ Failed to make request to {url} after 3 attempts: {e}")
+                return None
+    return None
 
 def _process_pr_data(pr_rows: list, repo_name: str) -> list:
     """Process PR data to ensure all required fields are present.
@@ -205,8 +255,8 @@ def _get_repo_details(repo_name: str):
         "https://swe-bench-plus.turing.com/api/jobs/get?topic=get_relevant_prs&repo_id="
         + repo_name
     )
-    res = requests.get(url, cookies=_AUTH_COOKIES, headers=_DEFAULT_HEADERS)
-    if res.status_code != 200:
+    res = _make_api_request("get", url, cookies=_AUTH_COOKIES)
+    if not res:
         return None
     try:
         return res.json()
@@ -241,16 +291,16 @@ def _start_job(repo_name: str) -> str | None:
             "max_prs": 1000,
         },
     }
-    res = requests.post(url, json=payload, cookies=_AUTH_COOKIES, headers=_DEFAULT_HEADERS)
-    if res.status_code != 200 or "application/json" not in res.headers.get("Content-Type", ""):
-        print(f"❌ Failed to start job for {repo_name}: {res.text[:200]}")
+    res = _make_api_request("post", url, json=payload, cookies=_AUTH_COOKIES)
+    if not res or "application/json" not in res.headers.get("Content-Type", ""):
+        print(f"❌ Failed to start job for {repo_name}: {res.text[:200] if res else 'No response'}")
         return None
     return res.json().get("jobId")
 
 def _get_job_status(job_id: str) -> str:
     url = f"https://swe-bench-plus.turing.com/api/jobs/{job_id}"
-    res = requests.get(url, cookies=_AUTH_COOKIES, headers=_DEFAULT_HEADERS)
-    if res.status_code != 200:
+    res = _make_api_request("get", url, cookies=_AUTH_COOKIES)
+    if not res:
         return "FAILED"
     return res.json().get("status", "UNKNOWN")
 
@@ -266,11 +316,11 @@ def _get_pr_rows_via_web(repo_name: str, max_retries=3, retry_delay=10):
             
             url = f'https://swe-bench-plus.turing.com/repos/{repo_name}'
             print(f"🔍 Attempt {attempt + 1}/{max_retries}: Fetching {url}")
-            r = requests.get(url, cookies=_AUTH_COOKIES, headers={"Accept": "text/html"})
-            print(f"🔍 Response status: {r.status_code}")
+            r = _make_api_request("get", url, cookies=_AUTH_COOKIES, headers={"Accept": "text/html"})
+            print(f"🔍 Response status: {r.status_code if r else 'No Response'}")
             
-            if r.status_code != 200:
-                print(f"❌ HTTP {r.status_code} for {repo_name}")
+            if not r:
+                print(f"❌ Failed to fetch webpage for {repo_name}")
                 if attempt < max_retries - 1:
                     print(f"⏳ Retrying in {retry_delay} seconds...")
                     time.sleep(retry_delay)
@@ -388,12 +438,15 @@ def _create_lt_batch(repo_name_safe: str, csv_path: str) -> str:
 
     # 1. Upload file
     with open(csv_path, "rb") as f:
-        up_res = requests.post(
+        up_res = _make_api_request(
+            "post",
             upload_url,
             data={"project_type": "rlhf"},
             files={"file": f},
             headers={"Authorization": f"Bearer {PERSONAL_LT_TOKEN}"},
         )
+    if not up_res:
+        raise Exception("Failed to upload CSV to LT - no response received")
     file_link = up_res.json()["fileLink"]
 
     # 2. Create batch metadata
@@ -416,11 +469,15 @@ def _create_lt_batch(repo_name_safe: str, csv_path: str) -> str:
         "projectId": PROJECT_ID,
         "projectType": "rlhf",
     }
-    create_res = requests.post(create_url, json=batch_payload, headers={"Authorization": f"Bearer {PERSONAL_LT_TOKEN}"})
+    create_res = _make_api_request("post", create_url, json=batch_payload, headers={"Authorization": f"Bearer {PERSONAL_LT_TOKEN}"})
+    if not create_res:
+        raise Exception("Failed to create batch in LT - no response received")
     batch_id = create_res.json()["id"]
 
     # 3. Trigger import
-    requests.post(import_url_tmpl.format(batch_id), json=batch_payload, headers={"Authorization": f"Bearer {PERSONAL_LT_TOKEN}"})
+    import_res = _make_api_request("post", import_url_tmpl.format(batch_id), json=batch_payload, headers={"Authorization": f"Bearer {PERSONAL_LT_TOKEN}"})
+    if not import_res:
+        raise Exception("Failed to trigger import in LT - no response received")
 
     return f"https://eval.turing.com/batches/{batch_id}/view"
 
@@ -628,8 +685,10 @@ def get_existing_repos_from_lt(project_id):
         print(f"   📄 Fetching batches from page {page}...")
         
         try:
-            response = requests.get(paginated_url, headers=headers)
-            response.raise_for_status()
+            response = _make_api_request("get", paginated_url, headers=headers)
+            if not response:
+                break
+            
             json_data = response.json()
             batches_on_page = json_data.get("data")
             
@@ -679,8 +738,10 @@ def get_existing_pr_ids_for_repo(repo_name, project_id):
     base_url = f"https://eval.turing.com/api/batches?sort%5B0%5D=createdAt%2CDESC&join%5B0%5D=batchStats&join%5B1%5D=importAttempts&filter%5B0%5D=projectId%7C%7C%24eq%7C%7C{project_id}"
     
     try:
-        response = requests.get(base_url, headers=headers)
-        response.raise_for_status()
+        response = _make_api_request("get", base_url, headers=headers)
+        if not response:
+            return existing_pr_ids
+                
         json_data = response.json()
         batches = json_data.get("data", [])
         
@@ -714,8 +775,10 @@ def get_existing_pr_ids_for_repo(repo_name, project_id):
                 paginated_conv_url = f"{conv_url}&limit={conv_limit}&page={conv_page}"
                 
                 try:
-                    conv_response = requests.get(paginated_conv_url, headers=headers)
-                    conv_response.raise_for_status()
+                    conv_response = _make_api_request("get", paginated_conv_url, headers=headers)
+                    if not conv_response:
+                        break
+                        
                     conv_json_data = conv_response.json()
                     conversations = conv_json_data.get("data", [])
                     
@@ -745,7 +808,7 @@ def get_existing_pr_ids_for_repo(repo_name, project_id):
     return existing_pr_ids
 
 def check_repo_exists_in_lt(repo_name, project_id):
-    """Check if a repository exists in the labeling tool (including part files)."""
+    """Check if a repository exists in the labeling tool (including part files and __Public suffix)."""
     print(f"🔍 Checking if repo {repo_name} exists in labeling tool...")
     
     # Convert repo name to LT format (USER/REPO -> USER__REPO)
@@ -757,11 +820,14 @@ def check_repo_exists_in_lt(repo_name, project_id):
         print(f"   ⚠️ LT cache not initialized, fetching data...")
         existing_repos = get_existing_repos_from_lt(project_id)
     
-    # Check for exact match and part files
+    # Check for exact match and part files, normalizing __Public suffix
     exact_match = lt_repo_name in existing_repos
     
     # Check for part files (e.g., USER__REPO_PART_002)
     part_files = [repo for repo in existing_repos if repo.startswith(lt_repo_name + "_PART_")]
+    
+    # Check for __Public suffix
+    public_suffix_match = lt_repo_name + "__Public" in existing_repos
     
     if exact_match:
         print(f"   ✅ Found exact match: {lt_repo_name}")
@@ -770,6 +836,10 @@ def check_repo_exists_in_lt(repo_name, project_id):
     if part_files:
         print(f"   ✅ Found part files: {part_files}")
         return True, part_files[0]  # Return the first part file as reference
+    
+    if public_suffix_match:
+        print(f"   ✅ Found __Public suffix match: {lt_repo_name}__Public")
+        return True, lt_repo_name + "__Public"
     
     print(f"   ❌ Repository {repo_name} not found in labeling tool")
     return False, None
@@ -821,6 +891,50 @@ def compare_prs_and_skip_if_identical(repo_name, csv_path, project_id):
 # High-level repo processing
 # ---------------------------------------------------------------------------
 
+def _get_repo_stats_even_if_failed(repo: str, upload_mode: str = 'Good'):
+    """Get repository statistics from PR reports even if SWE-Bench processing fails."""
+    from convert import load_relevant_pr_ids_from_reports
+    
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    try:
+        all_report_pr_ids, relevant_pr_ids, good_pr_ids = load_relevant_pr_ids_from_reports(
+            repo, base_dir, TARGET_LANGUAGE, upload_mode
+        )
+        
+        # Create basic stats structure - all SWE-Bench counts are 0 since no data
+        stats = {
+            'initial_pr_count': 0,  # Will be 0 since no SWE-Bench data
+            'after_date_filter_count': 0,
+            'logical_pr_count': len(all_report_pr_ids),
+            'good_pr_count': len(good_pr_ids),
+            'final_pr_count': 0,
+            'uploaded_pr_count': 0,
+            'missing_pr_ids': list(good_pr_ids),  # All Good PRs are missing if no SWE-Bench data
+            'success': False
+        }
+        
+        print(f"📊 Report stats for {repo}:")
+        print(f"   Total PRs in report: {len(all_report_pr_ids)}")
+        print(f"   Relevant PRs: {len(relevant_pr_ids)}")
+        print(f"   Good PRs: {len(good_pr_ids)}")
+        print(f"   Missing PRs (no SWE-Bench data): {len(all_report_pr_ids)}")
+        
+        return stats
+        
+    except Exception as e:
+        print(f"⚠️ Could not load PR report stats for {repo}: {e}")
+        return {
+            'initial_pr_count': 0,
+            'after_date_filter_count': 0,
+            'logical_pr_count': 0,
+            'good_pr_count': 0,
+            'final_pr_count': 0,
+            'uploaded_pr_count': 0,
+            'missing_pr_ids': [],
+            'success': False
+        }
+
 def _process_single_repo(repo: str, upload_mode: str = 'Good'):
     repo_safe = repo.replace("/", "__")
     
@@ -835,13 +949,15 @@ def _process_single_repo(repo: str, upload_mode: str = 'Good'):
     if not job_id:
         print(f"❌ Could not start job for {repo}")
         error_message = "Could not start SWE-Bench job"
+        # Get stats from PR reports even if SWE-Bench fails
+        repo_stats = _get_repo_stats_even_if_failed(repo, upload_mode)
         return {
             'status': 'failed',
             'initial_pr_count': initial_pr_count,
             'final_pr_count': final_pr_count,
             'uploaded_pr_count': uploaded_pr_count,
             'error_message': error_message,
-            'pr_stats': {}
+            'pr_stats': repo_stats
         }
 
     # 2. Wait for completion
@@ -853,13 +969,15 @@ def _process_single_repo(repo: str, upload_mode: str = 'Good'):
         if status in {"FAILED", "CANCELLED"}:
             print(f"❌ Job failed for {repo}")
             error_message = f"SWE-Bench job failed with status: {status}"
+            # Get stats from PR reports even if SWE-Bench fails
+            repo_stats = _get_repo_stats_even_if_failed(repo, upload_mode)
             return {
                 'status': 'failed',
                 'initial_pr_count': initial_pr_count,
                 'final_pr_count': final_pr_count,
                 'uploaded_pr_count': uploaded_pr_count,
                 'error_message': error_message,
-                'pr_stats': {}
+                'pr_stats': repo_stats
             }
         time.sleep(10)
 
@@ -871,13 +989,15 @@ def _process_single_repo(repo: str, upload_mode: str = 'Good'):
     if not pr_rows:
         print(f"❌ No PR data found for {repo}")
         error_message = "No PR data found in SWE-Bench"
+        # Get stats from PR reports even if SWE-Bench fails
+        repo_stats = _get_repo_stats_even_if_failed(repo, upload_mode)
         return {
             'status': 'failed',
             'initial_pr_count': initial_pr_count,
             'final_pr_count': final_pr_count,
             'uploaded_pr_count': uploaded_pr_count,
             'error_message': error_message,
-            'pr_stats': {}
+            'pr_stats': repo_stats
         }
     
     # Track initial PR count
@@ -900,13 +1020,15 @@ def _process_single_repo(repo: str, upload_mode: str = 'Good'):
     except Exception as e:
         print(f"❌ ERROR: Failed to save JSON file {json_path}: {e}")
         error_message = f"Failed to save JSON file: {e}"
+        # Get stats from PR reports even if JSON save fails
+        repo_stats = _get_repo_stats_even_if_failed(repo, upload_mode)
         return {
             'status': 'failed',
             'initial_pr_count': initial_pr_count,
             'final_pr_count': final_pr_count,
             'uploaded_pr_count': uploaded_pr_count,
             'error_message': error_message,
-            'pr_stats': {}
+            'pr_stats': repo_stats
         }
 
     # 5. Convert to CSV using updated signature
@@ -940,13 +1062,12 @@ def _process_single_repo(repo: str, upload_mode: str = 'Good'):
         print(f"📊 Result: {json.dumps(result, indent=2)}")
         final_pr_count = result.get('final_pr_count', 0)
         
+        # Always save CSV if there are usable PRs
+        if final_pr_count > 0:
+             print(f"💾 Saved CSV file with {final_pr_count} PRs to {csv_path}")
+
         if final_pr_count == 0:
             print(f"⚠️ No usable PRs found for {repo} after filtering.")
-            print(f"   This could be due to:")
-            print(f"   - All PRs were filtered out by date")
-            print(f"   - All PRs were filtered out by {upload_mode} mode filtering")
-            print(f"   - All PRs were already in labeling tool")
-            print(f"   - All PRs were already in local files")
             return {
                 'status': 'no_prs',
                 'initial_pr_count': initial_pr_count,
@@ -996,26 +1117,39 @@ def _process_single_repo(repo: str, upload_mode: str = 'Good'):
             print(f"✅ Proceeding with upload for {repo} - new PRs found")
 
     # 7. Upload to LT
-    batch_url = _create_lt_batch(repo_safe, csv_path)
-    print(f"✅ Batch created: {batch_url}")
-    
-    # Track uploaded PR count
-    uploaded_pr_count = final_pr_count
-    
-    # 8. Update spreadsheet to mark as added
-    sheet_name = get_language_sheet_name(TARGET_LANGUAGE)
-    update_spreadsheet_repo_status(sheet_name, repo, "Yes")
-    print(f"📝 Updated spreadsheet status for {repo}")
-    print()
-    
-    return {
-        'status': 'success',
-        'initial_pr_count': initial_pr_count,
-        'final_pr_count': final_pr_count,
-        'uploaded_pr_count': uploaded_pr_count,
-        'error_message': "",
-        'pr_stats': result  # Pass the full stats dictionary
-    }
+    try:
+        batch_url = _create_lt_batch(repo_safe, csv_path)
+        print(f"✅ Batch created: {batch_url}")
+        
+        # Track uploaded PR count
+        uploaded_pr_count = final_pr_count
+        
+        # 8. Update spreadsheet to mark as added
+        sheet_name = get_language_sheet_name(TARGET_LANGUAGE)
+        update_spreadsheet_repo_status(sheet_name, repo, "Yes")
+        print(f"📝 Updated spreadsheet status for {repo}")
+        print()
+        
+        return {
+            'status': 'success',
+            'initial_pr_count': initial_pr_count,
+            'final_pr_count': final_pr_count,
+            'uploaded_pr_count': uploaded_pr_count,
+            'error_message': "",
+            'pr_stats': result  # Pass the full stats dictionary
+        }
+        
+    except Exception as e:
+        print(f"❌ Failed to create LT batch for {repo}: {e}")
+        error_message = f"Failed to create labeling tool batch: {e}"
+        return {
+            'status': 'failed',
+            'initial_pr_count': initial_pr_count,
+            'final_pr_count': final_pr_count,
+            'uploaded_pr_count': 0,  # No PRs uploaded due to failure
+            'error_message': error_message,
+            'pr_stats': result  # Pass the stats even on failure
+        }
 
 # ---------------------------------------------------------------------------
 # Processing Report Functions
@@ -1138,7 +1272,7 @@ def track_repo_processing_stats(repo_name, status, initial_pr_count=0, final_pr_
             'prs_after_merge_date': pr_stats.get('after_date_filter_count', 0),
             'prs_logical': pr_stats.get('logical_pr_count', 0),
             'prs_good': pr_stats.get('good_pr_count', 0),
-            'prs_uploaded': pr_stats.get('uploaded_pr_count', 0),
+            'prs_uploaded': pr_stats.get('final_pr_count', 0),
             'prs_missing': len(pr_stats.get('missing_pr_ids', [])),
             'prs_missing_ids': ", ".join(map(str, pr_stats.get('missing_pr_ids', [])))
         })
@@ -1215,24 +1349,26 @@ def main():
                 skipped_count += 1
                 print(f"   Skipped count: {skipped_count}")
                 
-                # Track statistics for skipped repos
+                # Get stats from PR reports even for skipped repos
+                repo_stats = _get_repo_stats_even_if_failed(repo, UPLOAD_MODE)
                 processing_stats.append(track_repo_processing_stats(
-                    repo, 'skipped', 0, 0, 0, "Repository already exists in labeling tool"
+                    repo, 'skipped', 0, 0, 0, "Repository already exists in labeling tool", pr_stats=repo_stats
                 ))
                 continue
 
             result = _process_single_repo(repo, UPLOAD_MODE)
             
-            # Track statistics
-            processing_stats.append({
-                'repository': repo,
-                'status': result['status'],
-                'initial_pr_count': result['initial_pr_count'],
-                'final_pr_count': result['final_pr_count'],
-                'uploaded_pr_count': result['uploaded_pr_count'],
-                'error_message': result['error_message'],
-                'pr_stats': result['pr_stats'] # Include detailed stats
-            })
+            # Track statistics using the helper function to flatten the data
+            stats_entry = track_repo_processing_stats(
+                repo_name=repo,
+                status=result['status'],
+                initial_pr_count=result.get('initial_pr_count', 0),
+                final_pr_count=result.get('final_pr_count', 0),
+                uploaded_pr_count=result.get('uploaded_pr_count', 0),
+                error_message=result.get('error_message', ""),
+                pr_stats=result.get('pr_stats')
+            )
+            processing_stats.append(stats_entry)
             
             if result['status'] == "success":
                 successful_count += 1
@@ -1259,9 +1395,10 @@ def main():
             print(f"❌ Unexpected error processing {repo}: {exc}")
             print(f"   Failed count: {failed_count}")
             
-            # Track statistics for unexpected errors
+            # Get stats from PR reports even for unexpected errors
+            repo_stats = _get_repo_stats_even_if_failed(repo, UPLOAD_MODE)
             processing_stats.append(track_repo_processing_stats(
-                repo, 'failed', 0, 0, 0, f"Unexpected error: {exc}"
+                repo, 'failed', 0, 0, 0, f"Unexpected error: {exc}", pr_stats=repo_stats
             ))
 
     # Final summary

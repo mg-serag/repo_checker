@@ -3,8 +3,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from github import Github, GithubException, RateLimitExceededException
 import pandas as pd
-from datetime import datetime
-import time
 import argparse
 
 # Import centralized configuration functions
@@ -12,16 +10,21 @@ from config_utils import (
     get_all_language_configs, get_language_sheet_name, 
     get_dependency_files, get_language_github_language
 )
+# Centralized sheet utilities
+from sheet_utils import (
+    get_column_indices, get_existing_repositories, append_sheet_rows
+    )
 
 # --- Configuration ---
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 SHEET_ID = '1XMbstebCi1xFSwJ7cTN-DXv4jFmdH2owWBE3R7YsXK0'
+# Use the same creds file/path as sheet_utils
 CREDS_FILE = os.path.join(os.path.dirname(__file__), 'creds.json')
 
 # --- Repository Discovery Configuration ---
 MIN_STARS = 400  # Minimum stars for repositories
-PULL_REPO_COUNT = 10  # Number of new repos we aim to fetch per run
-SKIP_FIRST_RESULTS = 200  # Number of results to skip from the beginning (useful for resuming scans)
+PULL_REPO_COUNT = 1000  # Number of new repos we aim to fetch per run
+SKIP_FIRST_RESULTS = 600  # Number of results to skip from the beginning (useful for resuming scans)
 CHECK_OTHER_SHEETS = True  # Whether to check other language sheets for repos that should be in target sheet
 
 # Default target language
@@ -90,50 +93,50 @@ def check_other_language_sheets(gsheet_client, target_language, target_sheet_nam
         for lang_config in all_languages.values():
             all_sheet_names.add(lang_config.get('sheet_name', ''))
         all_sheet_names.discard('')  # Remove empty sheet names
-        
         # Also include the Scrap sheet in our checks
         all_sheet_names.add("Scrap")
-        
         # Get existing repos in target sheet
         target_sheet = gsheet_client.open_by_key(SHEET_ID).worksheet(target_sheet_name)
         target_values = target_sheet.get_all_values()
-        existing_in_target = {row[0] for row in target_values if len(row) > 0 and row[0].strip()}
+        if not target_values:
+            existing_in_target = set()
+        else:
+            target_header = target_values[0]
+            target_col_indices = get_column_indices(target_header)
+            target_repo_col_idx = target_col_indices.get('repository', 0)
+            existing_in_target = {row[target_repo_col_idx] for row in target_values[1:] if len(row) > target_repo_col_idx and row[target_repo_col_idx].strip()}
         print(f"Found {len(existing_in_target)} existing repositories in target sheet '{target_sheet_name}'")
-        
         repos_to_add = []
-        
         # Check each language sheet
         for sheet_name in all_sheet_names:
             if sheet_name == target_sheet_name:
                 continue  # Skip the target sheet itself
-                
             print(f"\nChecking sheet '{sheet_name}' for {target_language} repositories...")
-            
             try:
                 sheet = gsheet_client.open_by_key(SHEET_ID).worksheet(sheet_name)
                 all_values = sheet.get_all_values()
-                
-                # Check each row for majority language in column D (index 3)
-                for row_idx, row in enumerate(all_values, start=1):
-                    if len(row) > 3 and row[3].strip():  # Check if column D has data
-                        majority_lang = row[3].strip()
-                        repo_name = row[0].strip() if len(row) > 0 and row[0].strip() else ""
-                        
-                        # Check if this repo has the target language as majority language
+                if not all_values:
+                    continue
+                header = all_values[0]
+                col_indices = get_column_indices(header)
+                repo_col_idx = col_indices.get('repository', 0)
+                majority_lang_col_idx = col_indices.get('majority_language', 3)
+                url_col_idx = col_indices.get('repo_url', 2)
+                for row_idx, row in enumerate(all_values[1:], start=2):
+                    if len(row) > majority_lang_col_idx and row[majority_lang_col_idx].strip():
+                        majority_lang = row[majority_lang_col_idx].strip()
+                        repo_name = row[repo_col_idx].strip() if len(row) > repo_col_idx and row[repo_col_idx].strip() else ""
                         if majority_lang.lower() == target_language.lower() and repo_name:
                             if repo_name not in existing_in_target and repo_name not in [r[0] for r in repos_to_add]:
-                                repo_url = row[2].strip() if len(row) > 2 and row[2].strip() else ""
+                                repo_url = row[url_col_idx].strip() if len(row) > url_col_idx and row[url_col_idx].strip() else ""
                                 repo_data = [repo_name, '', repo_url]
                                 repos_to_add.append(repo_data)
                                 print(f"  Found {target_language} repo: {repo_name}")
-                
-                print(f"  Found {len([r for r in repos_to_add if r[0] in [row[0] for row in all_values if len(row) > 0 and row[0].strip()]])} eligible repositories in '{sheet_name}'")
-                
+                print(f"  Found {len([r for r in repos_to_add if r[0] in [row[repo_col_idx] for row in all_values[1:] if len(row) > repo_col_idx and row[repo_col_idx].strip()]])} eligible repositories in '{sheet_name}'")
             except gspread.exceptions.WorksheetNotFound:
                 print(f"  Warning: Worksheet '{sheet_name}' not found, skipping...")
             except Exception as e:
                 print(f"  Error checking sheet '{sheet_name}': {e}")
-        
         # Add found repositories to target sheet
         if repos_to_add:
             print(f"\n=== Adding {len(repos_to_add)} repositories from other sheets to '{target_sheet_name}' ===")
@@ -142,7 +145,6 @@ def check_other_language_sheets(gsheet_client, target_language, target_sheet_nam
             print(f"Successfully added {len(repos_to_add)} repositories from other language sheets")
         else:
             print(f"\nNo new {target_language} repositories found in other language sheets")
-            
     except Exception as e:
         print(f"Error during other language sheets check: {e}")
 
@@ -224,56 +226,7 @@ def get_github_language_query(language):
         }
         return language_mapping.get(language, f"language:{language.lower()}")
 
-def get_existing_repositories(gsheet_client, sheet_name):
-    """
-    Gets a list of all existing repositories from the Google Sheet.
-    Also checks the Scrap sheet to avoid duplicates there.
-    Returns a set of repository names for efficient duplicate checking.
-    """
-    try:
-        sheet = gsheet_client.open_by_key(SHEET_ID).worksheet(sheet_name)
-        print(f"Fetching existing repositories from sheet: '{sheet_name}'")
-        
-        # Get all values from the sheet
-        all_values = sheet.get_all_values()
-        
-        # Extract repository names from column A (index 0)
-        existing_repos = set()
-        skipped_rows = 0
-        
-        for row_idx, row in enumerate(all_values, start=1):
-            if len(row) > 0 and row[0].strip():  # Ensure the row has a column A and it's not empty
-                repo_name = row[0].strip()
-                existing_repos.add(repo_name)
-            elif len(row) > 0 and not row[0].strip():
-                skipped_rows += 1
-            elif len(row) == 0:
-                skipped_rows += 1
-        
-        print(f"Found {len(existing_repos)} existing repositories in sheet")
-        if skipped_rows > 0:
-            print(f"Skipped {skipped_rows} rows with missing or empty repository names")
-        
-        # Also check the Scrap sheet for duplicates
-        try:
-            scrap_sheet = gsheet_client.open_by_key(SHEET_ID).worksheet("Scrap")
-            scrap_values = scrap_sheet.get_all_values()
-            scrap_repos = {row[0].strip() for row in scrap_values if len(row) > 0 and row[0].strip()}
-            existing_repos.update(scrap_repos)
-            print(f"Found {len(scrap_repos)} additional repositories in Scrap sheet")
-        except gspread.exceptions.WorksheetNotFound:
-            print("Scrap sheet not found, skipping Scrap sheet duplicate check")
-        except Exception as e:
-            print(f"Error checking Scrap sheet: {e}")
-        
-        return existing_repos, len(all_values)
-        
-    except gspread.exceptions.WorksheetNotFound:
-        print(f"Error: Worksheet '{sheet_name}' not found in spreadsheet '{SHEET_ID}'")
-        raise
-    except Exception as e:
-        print(f"Error fetching existing repositories: {e}")
-        raise
+# Remove custom implementation; rely on sheet_utils.get_existing_repositories
 
 def search_github_repos(gh_client, existing_repo_names, max_needed, language, gsheet_client, sheet_name, skip_first=0):
     """
@@ -357,9 +310,9 @@ def search_github_repos(gh_client, existing_repo_names, max_needed, language, gs
                 print(f"  [Pass] Repository is eligible. Adding to list...")
                 
                 repo_data = [
-                    repo.full_name,                        # Column A: USER/REPO
-                    '',                                    # Column B: Empty
-                    repo.html_url                          # Column C: Full URL
+                    repo.full_name,   # Column A (repository)
+                    '',               # Column B (empty)
+                    repo.html_url     # Column C (repo_url)
                 ]
                 
                 all_new_repos.append(repo_data)
@@ -434,18 +387,11 @@ def update_spreadsheet(gsheet_client, df, sheet_name):
             print("No new repositories to add after final duplicate check.")
             return
             
-        # Convert dataframe to list of lists for gspread
-        values_to_append = df_to_add.values.tolist()
-        
-        # Get the next empty row to append to
-        next_row = len(all_values) + 1
-        
-        # Use update to append data starting at the next empty row
-        # Format: 'A{row}:C{row+len-1}' to specify the range
-        end_row = next_row + len(values_to_append) - 1
-        range_name = f'A{next_row}:C{end_row}'
-        sheet.update(values=values_to_append, range_name=range_name)
-        print(f"Successfully appended {len(df_to_add)} new rows to the spreadsheet starting at row {next_row}.")
+        # Convert dataframe to rows list
+        rows_to_append = df_to_add[['USER/REPO', 'URL']].values.tolist()
+        # Append using centralized utility
+        append_sheet_rows(sheet_name, rows_to_append, gsheet_client, SHEET_ID)
+        print(f"Successfully appended {len(rows_to_append)} new rows to the spreadsheet.")
 
     except gspread.exceptions.WorksheetNotFound:
         print(f"Worksheet with name '{sheet_name}' not found.")
@@ -519,7 +465,7 @@ def main():
         check_other_language_sheets(gsheet_client, TARGET_LANGUAGE, sheet_name)
         
         # Get existing repos to check for duplicates
-        existing_repos, _ = get_existing_repositories(gsheet_client, sheet_name)
+        existing_repos, _ = get_existing_repositories(sheet_name, gsheet_client)
         
         current_repo_count = len(existing_repos)
         print(f"Found {current_repo_count} existing repositories in sheet")

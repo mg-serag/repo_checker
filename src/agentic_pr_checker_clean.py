@@ -34,7 +34,7 @@ MERGED_AFTER_DATE = datetime.fromisoformat('2024-11-01T00:00:00+00:00')
 
 # --- Parallel Processing Configuration ---
 ENABLE_PARALLEL_PROCESSING = True
-MAX_WORKERS = 4
+MAX_WORKERS = 10
 PR_PROCESSING_THRESHOLD = 1.0
 
 # --- Single Repo Mode Configuration ---
@@ -214,27 +214,11 @@ def get_language_output_dir():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     base_dir = os.path.dirname(script_dir)  # Go up one level from src
     
-    try:
-        # Try to get the folder name from language config
-        csv_folder = get_language_csv_folder(TARGET_LANGUAGE)
-        # Convert csv folder name to pr_reports folder name
-        folder_name = csv_folder.replace('_csv', '_pr_reports').replace('_json', '_pr_reports')
-        output_dir = os.path.join(base_dir, "repo_evaluator", folder_name)
-    except (FileNotFoundError, KeyError):
-        # Fallback to manual mapping
-        language_folder_map = {
-            'Java': 'Java_pr_reports',
-            'JavaScript': 'JavaScript_pr_reports', 
-            'TypeScript': 'JavaScript_pr_reports',  # TypeScript uses same as JavaScript
-            'Python': 'Python_pr_reports',
-            'Go': 'Go_pr_reports',
-            'C/C++': 'C_Cpp_pr_reports',
-            'Rust': 'Rust_pr_reports',
-            'C#': 'CSharp_pr_reports',
-            'Ruby': 'Ruby_pr_reports'
-        }
-        folder_name = language_folder_map.get(TARGET_LANGUAGE, f'{TARGET_LANGUAGE}_pr_reports')
-        output_dir = os.path.join(base_dir, "repo_evaluator", folder_name)
+    # Sanitize language name for folder creation
+    sanitized_language = TARGET_LANGUAGE.replace('/', '_').replace('#', 'Sharp')
+    folder_name = f"{sanitized_language}_pr_reports"
+    
+    output_dir = os.path.join(base_dir, "repo_evaluator", folder_name)
     
     os.makedirs(output_dir, exist_ok=True)
     return output_dir
@@ -430,6 +414,10 @@ def analyze_pr_files(files):
         return None, "No files found in PR."
 
     allowed_ext = get_source_extensions(LANGUAGE)
+    # Ensure C/C++ headers are always allowed when target is C/C++
+    if LANGUAGE == 'C/C++':
+        allowed_ext.update({'.h', '.hpp', '.hh', '.hxx'})
+        
     dependency_files = get_dependency_files(LANGUAGE)
     filenames = [f["filename"] for f in files]
 

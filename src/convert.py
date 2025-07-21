@@ -277,12 +277,22 @@ def process_json_file(input_file, output_file, existing_repos=None, force=False,
     
     stats['initial_pr_count'] = len(data)
     
+    # Handle empty JSON files
+    if not data:
+        print(f"⚠️ Empty JSON file: {input_file}")
+        # Still try to get repo name from filename
+        repo_name = os.path.basename(input_file).replace('_pr_data.json', '').replace('__', '/')
+        
+        # Load PR report stats even for empty JSON
+        if upload_mode in ['Logical', 'Good']:
+            all_report_pr_ids, relevant_pr_ids, good_pr_ids = load_relevant_pr_ids_from_reports(repo_name, base_dir, language, upload_mode)
+            stats['logical_pr_count'] = len(all_report_pr_ids)
+            stats['good_pr_count'] = len(good_pr_ids)
+            stats['missing_pr_ids'] = list(good_pr_ids)  # All Good PRs are missing if JSON is empty
+        
+        return {**stats, 'success': True}
+    
     # 1. Date Filtering
-    # Keep PRs merged on or after the cutoff date (FILTER_DATE). The previous
-    # implementation used a '<' comparison which unintentionally excluded
-    # these newer PRs and resulted in empty results even when relevant PRs
-    # existed. We now use ">=" to include PRs that meet or exceed the
-    # threshold.
     date_filtered_data = [
         obj for obj in data
         if 'pr_merged_at' in obj and obj['pr_merged_at'] and
@@ -294,49 +304,50 @@ def process_json_file(input_file, output_file, existing_repos=None, force=False,
     
     # 2. Upload Mode Filtering (Logical or Good)
     if upload_mode in ['Logical', 'Good']:
-        relevant_pr_ids, good_pr_ids = load_relevant_pr_ids_from_reports(repo_name, base_dir, language, upload_mode)
+        all_report_pr_ids, relevant_pr_ids, good_pr_ids = load_relevant_pr_ids_from_reports(repo_name, base_dir, language, upload_mode)
         
+        # Logical PRs = *all* PRs present in the PR-report CSV, irrespective of agent judgement
+        stats['logical_pr_count'] = len(all_report_pr_ids)
+        stats['good_pr_count']    = len(good_pr_ids)
+
         if upload_mode == 'Logical':
-            filtered_data = [pr for pr in date_filtered_data if str(pr.get('pr_id')) in relevant_pr_ids]
-            stats['logical_pr_count'] = len(filtered_data)
-        else: # 'Good'
+            # Keep every PR that appears in the PR-report (good + bad + unchecked)
+            filtered_data = [pr for pr in date_filtered_data if str(pr.get('pr_id')) in all_report_pr_ids]
+        else:  # 'Good' mode – only keep PRs judged "Good PR" or "Not Checked"
             filtered_data = [pr for pr in date_filtered_data if str(pr.get('pr_id')) in good_pr_ids]
-            stats['good_pr_count'] = len(filtered_data)
-            # We can also report the total logical PRs found in reports for context
-            stats['logical_pr_count'] = len(relevant_pr_ids)
 
     else: # 'All'
         filtered_data = date_filtered_data
-        stats['logical_pr_count'] = len(filtered_data) # In 'All' mode, all are considered 'logical'
-        stats['good_pr_count'] = len(filtered_data) # and 'good' for stat purposes
+        stats['logical_pr_count'] = len(filtered_data)
+        stats['good_pr_count'] = len(filtered_data)
 
-    # This is the final count of PRs after all filtering, before writing to CSV
     stats['final_pr_count'] = len(filtered_data)
     
     # Write to CSV
     if filtered_data:
-        # Clean metadata and write to CSV
         final_rows = [clean_metadata(pr) for pr in filtered_data]
-
         with open(output_file, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(['metadata'])
             for row in final_rows:
                 writer.writerow([json.dumps(row)])
-
         stats['uploaded_pr_count'] = len(final_rows)
     else:
         stats['uploaded_pr_count'] = 0
 
-    # Calculate missing PR IDs
-    initial_ids = {str(pr.get('pr_id')) for pr in data}
-    final_ids = {str(pr.get('pr_id')) for pr in filtered_data}
-    missing_ids = sorted(list(initial_ids - final_ids))
-    stats['missing_pr_ids'] = missing_ids
+    # Calculate missing PR IDs: PRs in report but missing from JSON
+    if upload_mode in ['Logical', 'Good']:
+        # Load PR IDs from PR report (CSV)
+        all_report_pr_ids, _, good_pr_ids = load_relevant_pr_ids_from_reports(repo_name, base_dir, language, upload_mode)
+        pr_json_ids = {str(pr.get('pr_id')) for pr in data}
+        missing_ids = sorted(list(good_pr_ids - pr_json_ids))
+        stats['missing_pr_ids'] = missing_ids
+    else:
+        stats['missing_pr_ids'] = []
     
     return {**stats, 'success': True}
 
-def process_directory(input_dir, output_dir, existing_repos=None, force=False, base_dir=None, language=None):
+def process_directory(input_dir, output_dir, existing_repos=None, force=False, base_dir=None, language=None, upload_mode='Good'):
     """Process all JSON files in a directory."""
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
@@ -357,7 +368,7 @@ def process_directory(input_dir, output_dir, existing_repos=None, force=False, b
             output_path = os.path.join(output_dir, f"{base_name}.csv")
             
             try:
-                result = process_json_file(input_path, output_path, existing_repos, force, base_dir, language)
+                result = process_json_file(input_path, output_path, existing_repos, force, base_dir, language, upload_mode=upload_mode)
                 if isinstance(result, dict) and result.get('success'):
                     processing_stats.append(result)
                     print(f"✅ Successfully converted {input_path} to {output_path}")
@@ -429,7 +440,7 @@ def process_language_directories(base_dir, json_suffix=LANGUAGE_JSON_SUFFIX, csv
             output_dir = os.path.join(base_dir, output_dir_name)
 
             print(f"📁 Processing language directory: {input_dir} -> {output_dir}")
-            language_stats = process_directory(input_dir, output_dir, existing_repos, force, base_dir, language)
+            language_stats = process_directory(input_dir, output_dir, existing_repos, force, base_dir, language, upload_mode='Good')
             all_processing_stats.extend(language_stats)
             processed_any = True
     
@@ -530,77 +541,94 @@ def load_relevant_pr_ids_from_reports(repo_name, base_dir, language=None, upload
     
     # Determine the language-specific pr_reports directory
     if language:
-        # Use language-specific folder (e.g., Java_pr_reports, JavaScript_pr_reports)
-        pr_reports_dir = os.path.join(base_dir, "repo_evaluator", f"{language}_pr_reports")
+        # Sanitize language name for folder creation
+        sanitized_language = language.replace('/', '_').replace('#', 'Sharp')
+        folder_name = f"{sanitized_language}_pr_reports"
+        pr_reports_dir = os.path.join(base_dir, "repo_evaluator", folder_name)
     else:
         # Fallback to generic pr_reports folder
         pr_reports_dir = os.path.join(base_dir, "pr_reports")
     
     file_path = os.path.join(pr_reports_dir, file_name)
-    
+
+    # ------------------------------------------------------------------
+    # If the file is not found in the expected language folder, search all
+    # language *_pr_reports folders under repo_evaluator.  This makes the
+    # function robust when the caller passes an incorrect or generic
+    # language argument (e.g. "C/C++" for a JavaScript repository).
+    # ------------------------------------------------------------------
+
     if not os.path.exists(file_path):
-        print(f"⚠️ No relevant PRs file found: {file_path}")
-        print(f"   Including all PRs for {repo_name} (no filtering applied)")
-        return set(), set()  # Return empty sets to include all PRs
+        repo_evaluator_root = os.path.join(base_dir, "repo_evaluator")
+        fallback_path = None
+        if os.path.isdir(repo_evaluator_root):
+            for entry in os.listdir(repo_evaluator_root):
+                if entry.endswith("_pr_reports"):
+                    candidate = os.path.join(repo_evaluator_root, entry, file_name)
+                    if os.path.exists(candidate):
+                        fallback_path = candidate
+                        print(f"🔍 Found fallback PR report in {entry}: {candidate}")
+                        break
+
+        # If we found a fallback, update file_path so the rest of the
+        # function proceeds normally. Otherwise, warn and return empty sets.
+        if fallback_path:
+            file_path = fallback_path
+        else:
+            print(f"⚠️ No relevant PRs file found for {repo_name}. Searched:\n"
+                  f"   - Primary: {file_path}\n"
+                  f"   - All fallback *_pr_reports folders in {repo_evaluator_root}")
+            print(f"   No PR filtering will be applied for {repo_name}")
+            return set(), set(), set()  # Return empty sets to disable filtering
     
+    all_report_pr_ids = set()
     relevant_pr_ids = set()
-    good_pr_ids = set() # New set to store only Good PR IDs
+    good_pr_ids = set()
     
     try:
         with open(file_path, 'r', encoding='utf-8') as csv_file:
             reader = csv.reader(csv_file)
-            header = next(reader)  # Get header row
+            header = next(reader)
             
-            # Find the index of the agent_result column
-            agent_result_index = None
-            for i, col in enumerate(header):
-                if col.strip().lower() == 'agent_result':
-                    agent_result_index = i
-                    break
-            
-            if agent_result_index is None:
-                print(f"⚠️ agent_result column not found in {file_path}, including all PRs")
-                # Fallback: include all PRs if agent_result column is not found
-                for row in reader:
-                    if row and len(row) > 0:
-                        pr_id = row[0].strip()  # First column contains PR number/ID
-                        if pr_id and pr_id.isdigit():
-                            relevant_pr_ids.add(pr_id)
-            else:
-                # Filter based on agent_result column and upload mode
-                for row in reader:
-                    if row and len(row) > agent_result_index:
-                        pr_id = row[0].strip()  # First column contains PR number/ID
-                        agent_result = row[agent_result_index].strip() if len(row) > agent_result_index else ""
-                        
-                        if pr_id and pr_id.isdigit():
-                            if upload_mode == 'Good':
-                                # Good mode: Only include PRs with "Good PR" status
-                                if agent_result == "Good PR":
-                                    relevant_pr_ids.add(pr_id)
-                                    good_pr_ids.add(pr_id) # Add to good_pr_ids
-                                elif agent_result == "Not Checked":
-                                    relevant_pr_ids.add(pr_id)
-                                # Note: "Bad PR" PRs are excluded
-                            else:  # Logical mode
-                                # Logical mode: Include all PRs in the report (good, bad, or unchecked)
-                                if agent_result in ["Good PR", "Bad PR", "Not Checked"]:
-                                    relevant_pr_ids.add(pr_id)
-                                    if agent_result == "Good PR":
-                                        good_pr_ids.add(pr_id) # Add to good_pr_ids
-                                    elif agent_result == "Not Checked":
-                                        pass # No need to add to good_pr_ids
+            agent_result_index = -1
+            try:
+                agent_result_index = header.index('agent_result')
+            except ValueError:
+                print(f"⚠️ agent_result column not found in {file_path}, including all PRs from report.")
+
+            for row in reader:
+                if not row: continue
+                pr_id = row[0].strip()
+                if not pr_id.isdigit(): continue
+
+                all_report_pr_ids.add(pr_id)
+                agent_result = row[agent_result_index].strip() if agent_result_index != -1 and len(row) > agent_result_index else "Not Checked"
+
+                if upload_mode == 'Good':
+                    if agent_result in ["Good PR", "Not Checked"]:
+                        relevant_pr_ids.add(pr_id)
+                    if agent_result == "Good PR":
+                        good_pr_ids.add(pr_id)
+                elif upload_mode == 'Logical':
+                    if agent_result in ["Good PR", "Bad PR", "Not Checked"]:
+                        relevant_pr_ids.add(pr_id)
+                    if agent_result == "Good PR":
+                        good_pr_ids.add(pr_id)
+                else: # 'All'
+                    relevant_pr_ids.add(pr_id)
+                    if agent_result == "Good PR":
+                        good_pr_ids.add(pr_id)
                             
     except Exception as e:
         print(f"❌ Error loading relevant PRs file {file_path}: {e}")
-        print(f"   Including all PRs for {repo_name} (error in file reading)")
-        return set(), set()  # Return empty sets to include all PRs
+        return set(), set(), set()
     
-    print(f"Loaded {len(relevant_pr_ids)} relevant PR IDs from {file_path}")
+    print(f"Loaded PR IDs from {file_path}:")
+    print(f"  - Total PRs in report: {len(all_report_pr_ids)}")
+    print(f"  - Relevant PRs for mode '{upload_mode}': {len(relevant_pr_ids)}")
     print(f"  - Good PRs: {len(good_pr_ids)}")
-    print(f"  - Total PRs in report: {len(relevant_pr_ids)}")
     
-    return relevant_pr_ids, good_pr_ids
+    return all_report_pr_ids, relevant_pr_ids, good_pr_ids
 
 def create_processing_report(processing_stats, base_dir):
     """Create a comprehensive CSV report of processing statistics."""

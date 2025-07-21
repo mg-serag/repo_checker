@@ -37,7 +37,7 @@ SPREADSHEET_KEY = get_spreadsheet_key()
 
 # --- Language Configuration ---
 # Set the target language for evaluation
-TARGET_LANGUAGE = 'C/C++'  # Options: 'Java', 'JavaScript', 'Python', 'Go', 'C/C++', 'Rust', 'C#'
+TARGET_LANGUAGE = 'JavaScript'  # Options: 'Java', 'JavaScript', 'Python', 'Go', 'C/C++', 'Rust', 'C#'
 
 # Language-specific configurations
 from config_utils import (
@@ -648,6 +648,32 @@ def get_required_loc_for_stars(stars, loc_thresholds):
 
 
 
+def combine_c_cpp_languages(language_percentages):
+    """
+    Combine C and C++ percentages as they should be treated as one language group.
+    
+    Args:
+        language_percentages: Dictionary of language -> percentage
+        
+    Returns:
+        Updated language_percentages dict with combined C/C++
+    """
+    c_percent = language_percentages.get('C', 0)
+    cpp_percent = language_percentages.get('C++', 0)
+    
+    if c_percent > 0 or cpp_percent > 0:
+        combined_percent = c_percent + cpp_percent
+        
+        # Remove individual C/C++ entries
+        language_percentages.pop('C', None)
+        language_percentages.pop('C++', None)
+        
+        # Add a single "C/C++" entry
+        language_percentages['C/C++'] = combined_percent
+        
+    return language_percentages
+
+
 def combine_js_ts_languages(language_percentages):
     """
     Combine JavaScript and TypeScript percentages as they should be treated as one language.
@@ -717,8 +743,9 @@ def evaluate_repo(user_repo, all_repos_df, column_indices, existing_lt_repos, ro
         
     language_percentages = {lang: (bytes / total_bytes) * 100 for lang, bytes in languages_data.items()}
     
-    # Combine JavaScript and TypeScript percentages
+    # Combine language variations
     language_percentages = combine_js_ts_languages(language_percentages)
+    language_percentages = combine_c_cpp_languages(language_percentages)
     
     # Get the majority language (which might be combined JS/TS)
     primary_lang_name, primary_lang_percent = max(language_percentages.items(), key=lambda x: x[1])
@@ -1100,8 +1127,9 @@ def evaluate_repo_with_resume(user_repo, row, all_repos_df, column_indices, exis
             
             language_percentages = {lang: (bytes / total_bytes) * 100 for lang, bytes in languages_data.items()}
             
-            # Combine JavaScript and TypeScript percentages
+            # Combine language variations
             language_percentages = combine_js_ts_languages(language_percentages)
+            language_percentages = combine_c_cpp_languages(language_percentages)
             
             # Get the majority language (which might be combined JS/TS)
             primary_lang_name, primary_lang_percent = max(language_percentages.items(), key=lambda x: x[1])

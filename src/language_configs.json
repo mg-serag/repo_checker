@@ -7,7 +7,7 @@
       "target_language": "Python",
       "github_language": "Python",
       "evaluation": {
-        "min_percentage": 70,
+        "min_percentage": 51,
         "min_stars": 400,
         "loc_thresholds": {
           "400": 150000,
@@ -41,7 +41,7 @@
       "target_language": "JavaScript",
       "github_language": "JavaScript",
       "evaluation": {
-        "min_percentage": 70,
+        "min_percentage": 51,
         "min_stars": 400,
         "loc_thresholds": {
           "400": 150000,
@@ -77,7 +77,7 @@
       "target_language": "TypeScript",
       "github_language": "TypeScript",
       "evaluation": {
-        "min_percentage": 70,
+        "min_percentage": 51,
         "min_stars": 400,
         "loc_thresholds": {
           "400": 150000,
@@ -115,7 +115,7 @@
       "target_language": "Java",
       "github_language": "Java",
       "evaluation": {
-        "min_percentage": 70,
+        "min_percentage": 51,
         "min_stars": 400,
         "loc_thresholds": {
           "400": 150000,
@@ -150,7 +150,7 @@
       "target_language": "Go",
       "github_language": "Go",
       "evaluation": {
-        "min_percentage": 70,
+        "min_percentage": 51,
         "min_stars": 400,
         "loc_thresholds": {
           "400": 150000,
@@ -180,7 +180,7 @@
       "target_language": "C",
       "github_language": "C",
       "evaluation": {
-        "min_percentage": 70,
+        "min_percentage": 51,
         "min_stars": 400,
         "loc_thresholds": {
           "400": 150000,
@@ -218,7 +218,7 @@
       "target_language": "Ruby",
       "github_language": "Ruby",
       "evaluation": {
-        "min_percentage": 70,
+        "min_percentage": 51,
         "min_stars": 400,
         "loc_thresholds": {
           "400": 150000,
@@ -251,7 +251,7 @@
       "target_language": "Rust",
       "github_language": "Rust",
       "evaluation": {
-        "min_percentage": 70,
+        "min_percentage": 51,
         "min_stars": 400,
         "loc_thresholds": {
           "400": 150000,
@@ -280,7 +280,7 @@
       "target_language": "C#",
       "github_language": "C#",
       "evaluation": {
-        "min_percentage": 70,
+        "min_percentage": 51,
         "min_stars": 400,
         "loc_thresholds": {
           "400": 150000,
