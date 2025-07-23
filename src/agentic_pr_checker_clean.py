@@ -23,11 +23,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 
 # --- Configuration ---
-TARGET_LANGUAGE = "JavaScript"  # Set target language directly
+TARGET_LANGUAGE = "Java"  # Set target language directly
 
 # --- Script Behavior ---
-DEBUG_MODE = False
-DEBUG_REPO_URL = "https://github.com/keras-team/keras"
+# Remove DEBUG_MODE and DEBUG_REPO_URL
 TARGET_GOOD_PRS = 2
 LLM_MODEL = "gpt-4o-mini"
 MERGED_AFTER_DATE = datetime.fromisoformat('2024-11-01T00:00:00+00:00')
@@ -37,13 +36,25 @@ ENABLE_PARALLEL_PROCESSING = True
 MAX_WORKERS = 10
 PR_PROCESSING_THRESHOLD = 1.0
 
-# --- Single Repo Mode Configuration ---
-SINGLE_REPO_MODE = False
-SINGLE_REPO_URL = "https://github.com/example/example-repo"
+    # "DynamoRIO/dynamorio",
+    # "pocoproject/poco",
+    # "fluent/fluent-bit",
+    # "valkey-io/valkey",
+
+# --- Manual Mode Configuration ---
+MANUAL_MODE = True
+MANUAL_REPOS = [
+    # "DynamoRIO/dynamorio", "pocoproject/poco", "fluent/fluent-bit", "valkey-io/valkey"
+    "renovatebot/renovate",
+    "wevm/viem",
+    "apache/seatunnel",
+    "checkstyle/checkstyle"
+    # "go-gitea__gitea"
+]
+
 # Get the base directory for single repo output
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(SCRIPT_DIR)  # Go up one level from src
-SINGLE_REPO_OUTPUT_DIR = os.path.join(BASE_DIR, "repo_evaluator", "pr_reports")
 
 # --- Load Configuration from Centralized Config ---
 from config_utils import (
@@ -413,31 +424,23 @@ def analyze_pr_files(files):
     if not files:
         return None, "No files found in PR."
 
-    allowed_ext = get_source_extensions(LANGUAGE)
-    # Ensure C/C++ headers are always allowed when target is C/C++
-    if LANGUAGE == 'C/C++':
-        allowed_ext.update({'.h', '.hpp', '.hh', '.hxx'})
-        
+    # Use config_utils to get the language family extensions and non-code extensions
+    allowed_ext = get_source_extensions(LANGUAGE)  # This is already a set of all family extensions
     dependency_files = get_dependency_files(LANGUAGE)
-    filenames = [f["filename"] for f in files]
+    non_code_ext = NON_CODE_EXT
 
-    # Language gate - ensure no files from other code languages exist
-    disallowed_ext = ALL_SOURCE_EXT - allowed_ext
+    filenames = [f["filename"] for f in files]
 
     for fn in filenames:
         ext = os.path.splitext(fn)[1].lower()
 
-        # Skip non-code and dependency files
-        if ext in NON_CODE_EXT or os.path.basename(fn) in dependency_files:
+        # Always allow non-code/text/markup files and dependency files
+        if ext in non_code_ext or os.path.basename(fn) in dependency_files:
             continue
 
-        # Check for disallowed language files
-        if ext in disallowed_ext:
-            return None, f"Disallowed language file detected: {fn}"
-
-        # Unknown extension - assume code and fail
+        # Only allow files with extensions in the language family
         if ext not in allowed_ext:
-            return None, f"Unknown or binary file type not allowed: {fn}"
+            return None, f"Disallowed or unknown code file detected: {fn}"
 
     # Split into test and non-test source files
     test_files = []
@@ -447,20 +450,18 @@ def analyze_pr_files(files):
         ext = os.path.splitext(fn)[1].lower()
         if ext not in allowed_ext:
             continue
-
         if os.path.basename(fn) in dependency_files:
             continue
-
         if _is_test_file(fn, LANGUAGE):
             test_files.append(fn)
         else:
             non_test_source_files.append(fn)
 
-    if len(test_files) < 2:
-        return None, f"Only {len(test_files)} test file(s) found; at least 2 required."
+    if len(test_files) < 1:
+        return None, f"Only {len(test_files)} test file(s) found; at least 1 required."
 
-    if len(non_test_source_files) < 2:
-        return None, f"Only {len(non_test_source_files)} non-test source file(s) found; at least 2 required."
+    if len(non_test_source_files) < 1:
+        return None, f"Only {len(non_test_source_files)} non-test source file(s) found; at least 1 required."
 
     return "Pass", f"All {LANGUAGE} file checks passed."
 
@@ -483,12 +484,45 @@ def run_llm_check(issue_body):
         print(f"❌ LLM analysis failed: {e}")
         return "Bad PR", f"LLM analysis failed: {e}"
 
+def get_closing_issue_number(pr_number, owner, repo, pr_body=None):
+    """Try to get the closing issue number for a PR using the GitHub API. Fallback to body parsing if needed."""
+    # Try GitHub REST API timeline endpoint for closing issues
+    url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/timeline"
+    headers = {
+        "Accept": "application/vnd.github.mockingbird-preview+json",
+        "User-Agent": "Agentic-PR-Checker",
+        "Authorization": f"token {GITHUB_TOKEN}"
+    }
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            events = response.json()
+            closing_issues = [e for e in events if e.get('event') == 'cross-referenced' and e.get('source', {}).get('issue', {}).get('state') == 'closed']
+            # Prefer issues that are referenced as 'closing'
+            for e in events:
+                if e.get('event') == 'closed' and e.get('actor', {}).get('type') == 'Bot':
+                    continue  # skip bots
+            if closing_issues:
+                # If only one, return it
+                unique_issues = set(e['source']['issue']['number'] for e in closing_issues if 'source' in e and 'issue' in e['source'])
+                if len(unique_issues) == 1:
+                    return str(list(unique_issues)[0])
+        # If not found, fall back to body parsing
+    except Exception as e:
+        print(f"[WARN] Timeline API failed for PR #{pr_number}: {e}")
+    # Fallback: parse PR body
+    if pr_body is not None:
+        return extract_issue_number(pr_body)
+    return None
+
 def find_logically_relevant_prs(owner, repo):
-    """Find PRs that pass all logical checks and are candidates for agentic review."""
+    """Find PRs that pass all logical checks and are candidates for agentic review. Always collect detailed rejection reasons and per-PR failure info for reporting."""
     print(f"\n🔍 LOGICAL FILTERING for {owner}/{repo}...")
     all_prs = get_merged_prs(owner, repo, MERGED_AFTER_DATE)
     logically_relevant_prs = []
-    
+    rejected_prs = []  # Always collect rejection details
+    pr_failure_details = []  # Always collect for CSV
+
     # Initialize counters for detailed reporting
     filter_stats = {
         'total_prs': len(all_prs),
@@ -498,102 +532,114 @@ def find_logically_relevant_prs(owner, repo):
         'file_checks_failed': 0,
         'passed': 0
     }
-    
+
     print(f"📈 Starting logical analysis of {len(all_prs)} PRs...")
-    
+
     for i, pr in enumerate(all_prs, 1):
         pr_number = pr.get('number')
-        
+        pr_url = f"https://github.com/{owner}/{repo}/pull/{pr_number}"
+        rejection_reason = None
+        failed_check = None
+
         # Show progress every 10 PRs or in debug mode
-        if i % 10 == 0 or DEBUG_MODE:
+        if i % 10 == 0 or False: # DEBUG_MODE is removed
             progress_bar = create_simple_progress_bar(i, len(all_prs), "Filtering")
             print(f"\r{progress_bar}", end='', flush=True)
 
-        if DEBUG_MODE: 
-            print(f"\n--- Analyzing PR #{pr_number} ---")
-            print(f"  - PR Data Dump: {json.dumps(pr, indent=2)}")
-
         # Extract issue number
-        issue_number = extract_issue_number(pr.get('body'))
+        issue_number = get_closing_issue_number(pr_number, owner, repo, pr.get('body'))
         if not issue_number:
             filter_stats['no_issue'] += 1
-            if DEBUG_MODE:
-                print(f"  - Skip: No unique issue found.")
+            rejection_reason = "No unique issue found."
+            failed_check = "no_issue"
+            rejected_prs.append({'number': pr_number, 'url': pr_url, 'reason': rejection_reason})
+            pr_failure_details.append({'pr_number': pr_number, 'pr_url': pr_url, 'failed_check': failed_check, 'reason': rejection_reason})
             continue
-        
+
         # Get issue details
         issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}"
         issue_data = make_github_api_request(issue_url)
         if not issue_data:
-            if DEBUG_MODE:
-                print(f"  - Skip: Could not fetch issue #{issue_number}")
+            rejection_reason = f"Could not fetch issue #{issue_number}"
+            failed_check = "no_issue"
+            rejected_prs.append({'number': pr_number, 'url': pr_url, 'reason': rejection_reason})
+            pr_failure_details.append({'pr_number': pr_number, 'pr_url': pr_url, 'failed_check': failed_check, 'reason': rejection_reason})
             continue
-        
+
         issue_json = issue_data.json()
-        
+
         # Check if linked item is an issue, not a PR
         if issue_json.get('pull_request'):
-            if DEBUG_MODE:
-                print(f"  - Skip: Linked item #{issue_number} is a Pull Request, not an Issue.")
+            rejection_reason = f"Linked item #{issue_number} is a Pull Request, not an Issue."
+            failed_check = "no_issue"
+            rejected_prs.append({'number': pr_number, 'url': pr_url, 'reason': rejection_reason})
+            pr_failure_details.append({'pr_number': pr_number, 'pr_url': pr_url, 'failed_check': failed_check, 'reason': rejection_reason})
             continue
-        
+
         # Language filtering: Issue must be in English
         issue_body = issue_json.get('body', '')
         if not is_english(issue_body):
             filter_stats['not_english'] += 1
-            if DEBUG_MODE:
-                print(f"  - Skip: Issue #{issue_number} statement contains too many non-English characters.")
+            rejection_reason = f"Issue #{issue_number} statement contains too many non-English characters."
+            failed_check = "not_english"
+            rejected_prs.append({'number': pr_number, 'url': pr_url, 'reason': rejection_reason})
+            pr_failure_details.append({'pr_number': pr_number, 'pr_url': pr_url, 'failed_check': failed_check, 'reason': rejection_reason})
             continue
-        
+
         # Get PR files for analysis
         files_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/files"
         files = get_pr_files(files_url)
         if not files:
-            if DEBUG_MODE:
-                print(f"  - Skip: No files found in PR #{pr_number}")
+            rejection_reason = f"No files found in PR #{pr_number}"
+            failed_check = "file_checks"
+            rejected_prs.append({'number': pr_number, 'url': pr_url, 'reason': rejection_reason})
+            pr_failure_details.append({'pr_number': pr_number, 'pr_url': pr_url, 'failed_check': failed_check, 'reason': rejection_reason})
             continue
-        
+
         # Count changes in non-test code files
         allowed_ext = get_source_extensions(LANGUAGE)
         dependency_files = get_dependency_files(LANGUAGE)
-        
+
         non_test_code_changes = 0
         for file_info in files:
             filename = file_info.get('filename', '')
             ext = os.path.splitext(filename)[1].lower()
-            
+
             # Skip non-code files and dependency files
             if ext not in allowed_ext or os.path.basename(filename) in dependency_files:
                 continue
-            
+
             # Skip test files
             if _is_test_file(filename, LANGUAGE):
                 continue
-            
+
             # Count changes
             additions = file_info.get('additions', 0)
             deletions = file_info.get('deletions', 0)
             non_test_code_changes += additions + deletions
-        
+
         # Require minimum 20 lines of changes in non-test code files
         if non_test_code_changes < 20:
             filter_stats['insufficient_changes'] += 1
-            if DEBUG_MODE:
-                print(f"  - Skip: PR #{pr_number} has only {non_test_code_changes} lines of changes in non-test code files (minimum 20 required).")
+            rejection_reason = f"PR #{pr_number} has only {non_test_code_changes} lines of changes in non-test code files (minimum 20 required)."
+            failed_check = "insufficient_changes"
+            rejected_prs.append({'number': pr_number, 'url': pr_url, 'reason': rejection_reason})
+            pr_failure_details.append({'pr_number': pr_number, 'pr_url': pr_url, 'failed_check': failed_check, 'reason': rejection_reason})
             continue
-            
+
         # Run file analysis checks
         status, reason = analyze_pr_files(files)
         if status != "Pass":
             filter_stats['file_checks_failed'] += 1
-            if DEBUG_MODE:
-                print(f"  - Skip: {reason}")
+            rejection_reason = reason
+            failed_check = "file_checks"
+            rejected_prs.append({'number': pr_number, 'url': pr_url, 'reason': rejection_reason})
+            pr_failure_details.append({'pr_number': pr_number, 'pr_url': pr_url, 'failed_check': failed_check, 'reason': rejection_reason})
             continue
-        
+
         filter_stats['passed'] += 1
-        if DEBUG_MODE:
-            print(f"  - Pass: Meets all logical criteria (non-test code changes: {non_test_code_changes} lines).")
-        
+        pr_failure_details.append({'pr_number': pr_number, 'pr_url': pr_url, 'failed_check': 'passed', 'reason': ''})
+
         # Store the issue number with the PR data
         pr_data = pr.copy()
         pr_data['issue_number'] = issue_number
@@ -603,7 +649,7 @@ def find_logically_relevant_prs(owner, repo):
     # Final progress bar
     progress_bar = create_simple_progress_bar(len(all_prs), len(all_prs), "Filtering")
     print(f"\r{progress_bar}")
-    
+
     # Detailed filtering summary
     print(f"\n📊 LOGICAL FILTERING RESULTS for {owner}/{repo}:")
     print(f"   📈 Total PRs analyzed: {filter_stats['total_prs']}")
@@ -612,11 +658,12 @@ def find_logically_relevant_prs(owner, repo):
     print(f"   ❌ Insufficient changes: {filter_stats['insufficient_changes']}")
     print(f"   ❌ Failed file checks: {filter_stats['file_checks_failed']}")
     print(f"   ✅ Passed all logical checks: {filter_stats['passed']}")
-    
+
     success_rate = (filter_stats['passed'] / max(filter_stats['total_prs'], 1)) * 100
     print(f"   📊 Success rate: {success_rate:.1f}%")
-    
-    return logically_relevant_prs, len(all_prs)
+
+    return logically_relevant_prs, len(all_prs), rejected_prs, pr_failure_details
+
 
 def run_parallel_agentic_checks(prs_to_check, owner, repo):
     """Run agentic checks on multiple PRs in parallel."""
@@ -744,10 +791,7 @@ def run_agentic_check_on_repo(logically_relevant_prs, owner, repo):
 def write_prs_to_csv(owner, repo, relevant_prs, agent_decisions, output_dir=None):
     """Write relevant PRs and their issues to a CSV file."""
     if output_dir is None:
-        if SINGLE_REPO_MODE:
-            output_dir = SINGLE_REPO_OUTPUT_DIR
-        else:
-            output_dir = get_language_output_dir()
+        output_dir = get_language_output_dir()
     
     # Ensure the output directory exists
     os.makedirs(output_dir, exist_ok=True)
@@ -777,8 +821,25 @@ def write_prs_to_csv(owner, repo, relevant_prs, agent_decisions, output_dir=None
     print(f"📄 Saved PR report for {owner}/{repo} to {filename}")
     print(f"📁 Output directory: {output_dir}")
 
+def write_logical_check_report_csv(owner, repo, pr_failure_details, output_dir=None):
+    """Write a CSV report listing each PR and which logical check it failed (or passed)."""
+    if output_dir is None:
+        output_dir = get_language_output_dir()
+
+    os.makedirs(output_dir, exist_ok=True)
+    filename = os.path.join(output_dir, f"{owner}__{repo}_logical_check_report.csv")
+    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+        fieldnames = ['pr_number', 'pr_url', 'failed_check', 'reason']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in pr_failure_details:
+            writer.writerow(row)
+    print(f"📄 Saved logical check report for {owner}/{repo} to {filename}")
+    print(f"📁 Output directory: {output_dir}")
+
+
 def run_single_repo_analysis(repo_url):
-    """Run agentic PR checker on a single repository."""
+    """Run agentic PR checker on a single repository. In debug mode, output detailed rejection reasons for each PR. Always output logical check report CSV."""
     print(f"🔍 Running single repo analysis for: {repo_url}")
     
     owner, repo = parse_github_url(repo_url)
@@ -787,14 +848,25 @@ def run_single_repo_analysis(repo_url):
         return False
     
     print(f"📊 Processing repository: {owner}/{repo}")
-    
+
     # Find logically relevant PRs
-    relevant_prs, total_count = find_logically_relevant_prs(owner, repo)
+    relevant_prs, total_count, rejected_prs, pr_failure_details = find_logically_relevant_prs(owner, repo)
     print(f"📈 Total PRs found: {total_count}")
     print(f"📈 Logically relevant PRs: {len(relevant_prs)}")
 
     # 👉 Write initial CSV with status 'Not Checked'
     write_prs_to_csv(owner, repo, relevant_prs, {}, get_language_output_dir())
+    # 👉 Write logical check report CSV
+    write_logical_check_report_csv(owner, repo, pr_failure_details, get_language_output_dir())
+
+    # Print detailed rejection report
+    print("\n================ DETAILED REJECTION REPORT ================" )
+    if rejected_prs:
+        for r in rejected_prs:
+            print(f"PR #{r['number']} | {r['url']} | Reason: {r['reason']}")
+    else:
+        print("No PRs were rejected by logical checks.")
+    print("==========================================================\n")
 
     # Run agentic checks
     if relevant_prs:
@@ -835,14 +907,15 @@ def parse_command_line_args():
                        help=f'Threshold for PR processing (0.0-1.0, default: {PR_PROCESSING_THRESHOLD})')
     parser.add_argument('--debug', action='store_true',
                        help='Enable debug mode')
-    parser.add_argument('--debug-repo', type=str, default=DEBUG_REPO_URL,
-                       help=f'Repository URL for debug mode (default: {DEBUG_REPO_URL})')
-    
+    parser.add_argument('--debug-repo', type=str, default=None, # DEBUG_REPO_URL is removed
+                       help='Repository URL for debug mode (default: None)')
+    parser.add_argument('--manual-repos', type=str, default=None,
+                       help='Comma-separated list of USER/REPO to process in manual mode')
     return parser.parse_args()
 
 def update_config_from_args(args):
     """Update global configuration based on command line arguments."""
-    global LLM_MODEL, TARGET_GOOD_PRS, ENABLE_PARALLEL_PROCESSING, MAX_WORKERS, PR_PROCESSING_THRESHOLD, DEBUG_MODE, DEBUG_REPO_URL
+    global LLM_MODEL, TARGET_GOOD_PRS, ENABLE_PARALLEL_PROCESSING, MAX_WORKERS, PR_PROCESSING_THRESHOLD, MANUAL_MODE, MANUAL_REPOS
     
     LLM_MODEL = args.model
     TARGET_GOOD_PRS = args.target_good_prs
@@ -856,8 +929,11 @@ def update_config_from_args(args):
     PR_PROCESSING_THRESHOLD = max(0.0, min(1.0, args.threshold))
     
     if args.debug:
-        DEBUG_MODE = True
-        DEBUG_REPO_URL = args.debug_repo
+        MANUAL_MODE = True
+        MANUAL_REPOS = [args.debug_repo]
+    if args.manual_repos:
+        MANUAL_MODE = True
+        MANUAL_REPOS = [repo.strip() for repo in args.manual_repos.split(',') if repo.strip()]
 
 # --- Main Function ---
 
@@ -872,28 +948,67 @@ def main():
     # Display language configuration
     print_language_configuration()
     
-    # Check for single repo mode
-    if SINGLE_REPO_MODE:
-        print("🎯 SINGLE REPO MODE ENABLED")
-        print(f"Target Repository: {SINGLE_REPO_URL}")
+    if MANUAL_MODE:
+        print("🎯 MANUAL MODE ENABLED")
+        print(f"Target Repositories: {MANUAL_REPOS}")
         print("=" * 60)
-        
-        success = run_single_repo_analysis(SINGLE_REPO_URL)
-        if success:
-            print("🎉 Single repo analysis completed successfully!")
+        # Load sheet for existence check
+        sheet_df, header = get_sheet_data(SPREADSHEET_KEY, SHEET_NAME)
+        if sheet_df is not None:
+            column_indices = get_column_indices(header)
+            user_repo_col_idx = column_indices['user_repo']
+            logic_col_idx = column_indices['logical_checks']
+            agentic_col_idx = column_indices['agentic_check']
         else:
-            print("❌ Single repo analysis failed or no good PRs found.")
-        return
-    
-    # Debug mode
-    if DEBUG_MODE:
-        print("🕵️ DEBUG MODE ENABLED 🕵️")
-        owner, repo = parse_github_url(DEBUG_REPO_URL)
-        if owner and repo:
-            relevant_prs, total_count = find_logically_relevant_prs(owner, repo)
-            print(f"\nTotal PRs: {total_count}, Relevant PRs: {len(relevant_prs)}")
-            passed, agent_decisions = run_agentic_check_on_repo(relevant_prs, owner, repo)
-            print(f"\nFinal Result for {DEBUG_REPO_URL}: Agentic Check {'Passed' if passed else 'Failed'}")
+            column_indices = None
+            user_repo_col_idx = logic_col_idx = agentic_col_idx = None
+        for repo_str in MANUAL_REPOS:
+            print("\n" + "="*80)
+            print(f"📦 REPOSITORY: {repo_str}")
+            print("="*80)
+            try:
+                owner, repo = repo_str.split('/')
+            except ValueError:
+                print(f"❌ Skipping: Invalid user/repo format: '{repo_str}'")
+                continue
+            # Check if repo exists in sheet
+            sheet_row_index = None
+            if sheet_df is not None:
+                for idx, row in sheet_df.iterrows():
+                    user_repo_val = row.iloc[user_repo_col_idx] if user_repo_col_idx < len(row) else ''
+                    if isinstance(user_repo_val, str) and user_repo_val.strip().lower() == repo_str.lower():
+                        sheet_row_index = idx + 2  # 1-based, plus header
+                        break
+            # Run analysis and update sheet if present
+            relevant_prs, total_count, rejected_prs, pr_failure_details = find_logically_relevant_prs(owner, repo)
+            print(f"📈 Total PRs found: {total_count}")
+            print(f"📈 Logically relevant PRs: {len(relevant_prs)}")
+            write_prs_to_csv(owner, repo, relevant_prs, {}, get_language_output_dir())
+            write_logical_check_report_csv(owner, repo, pr_failure_details, get_language_output_dir())
+            if sheet_row_index is not None and column_indices is not None:
+                update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['total_prs'], total_count)
+                update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['relevant_prs'], len(relevant_prs))
+            print("\n================ DETAILED REJECTION REPORT ================" )
+            if rejected_prs:
+                for r in rejected_prs:
+                    print(f"PR #{r['number']} | {r['url']} | Reason: {r['reason']}")
+            else:
+                print("No PRs were rejected by logical checks.")
+            print("==========================================================\n")
+            if relevant_prs:
+                passed, agent_decisions = run_agentic_check_on_repo(relevant_prs, owner, repo)
+                print(f"🤖 Agentic check result: {'PASSED' if passed else 'FAILED'}")
+                write_prs_to_csv(owner, repo, relevant_prs, agent_decisions, get_language_output_dir())
+                good_prs = sum(1 for decision in agent_decisions.values() if decision.get('result') == 'Good PR')
+                print(f"✅ Good PRs found: {good_prs}")
+                print(f"❌ Bad PRs found: {len(agent_decisions) - good_prs}")
+                if sheet_row_index is not None and column_indices is not None:
+                    update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['agentic_check'], "Yes" if passed else "No")
+            else:
+                print("⏭️ No logically relevant PRs found for agentic analysis.")
+                if sheet_row_index is not None and column_indices is not None:
+                    update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['agentic_check'], "No")
+        print("\n🎉 All manual repositories analyzed.")
         return
 
     # Production mode - using Google Sheets
@@ -949,12 +1064,14 @@ def main():
             continue
             
         # Phase 1: Logical filtering
-        relevant_prs, total_count = find_logically_relevant_prs(owner, repo)
+        relevant_prs, total_count, rejected_prs, pr_failure_details = find_logically_relevant_prs(owner, repo)
         update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['total_prs'], total_count)
         update_sheet_cell(SPREADSHEET_KEY, SHEET_NAME, sheet_row_index, column_indices['relevant_prs'], len(relevant_prs))
 
         # 👉 Write initial CSV with status 'Not Checked'
         write_prs_to_csv(owner, repo, relevant_prs, {}, get_language_output_dir())
+        # 👉 Write logical check report CSV
+        write_logical_check_report_csv(owner, repo, pr_failure_details, get_language_output_dir())
 
         # Phase 2: Agentic analysis
         if relevant_prs:
