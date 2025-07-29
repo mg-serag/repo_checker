@@ -23,7 +23,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 
 # --- Configuration ---
-TARGET_LANGUAGE = "Java"  # Set target language directly
+TARGET_LANGUAGE = "JavaScript"  # Set target language directly
 
 # --- Script Behavior ---
 # Remove DEBUG_MODE and DEBUG_REPO_URL
@@ -35,20 +35,16 @@ MERGED_AFTER_DATE = datetime.fromisoformat('2024-11-01T00:00:00+00:00')
 ENABLE_PARALLEL_PROCESSING = True
 MAX_WORKERS = 10
 PR_PROCESSING_THRESHOLD = 1.0
-
-    # "DynamoRIO/dynamorio",
-    # "pocoproject/poco",
-    # "fluent/fluent-bit",
-    # "valkey-io/valkey",
+ 
 
 # --- Manual Mode Configuration ---
-MANUAL_MODE = True
+MANUAL_MODE = False
 MANUAL_REPOS = [
-    # "DynamoRIO/dynamorio", "pocoproject/poco", "fluent/fluent-bit", "valkey-io/valkey"
-    "renovatebot/renovate",
-    "wevm/viem",
-    "apache/seatunnel",
-    "checkstyle/checkstyle"
+    "apache/arrow", "DynamoRIO/dynamorio", "pocoproject/poco", "fluent/fluent-bit", "valkey-io/valkey"
+    # "wevm/viem",
+    # "renovatebot/renovate",
+    # "apache/seatunnel",
+    # "checkstyle/checkstyle"
     # "go-gitea__gitea"
 ]
 
@@ -60,8 +56,7 @@ BASE_DIR = os.path.dirname(SCRIPT_DIR)  # Go up one level from src
 from config_utils import (
     get_spreadsheet_key, get_github_token, get_openai_api_key,
     get_language_config, get_all_language_configs, get_source_extensions, get_dependency_files,
-    get_test_patterns, get_test_directories, get_non_code_extensions,
-    get_universal_test_extensions, get_language_csv_folder
+    get_non_code_extensions, get_test_file_patterns, get_language_csv_folder
 )
 
 # Load tokens and configuration
@@ -84,18 +79,22 @@ LANGUAGE = TARGET_LANGUAGE
 # Load file analysis configuration
 try:
     NON_CODE_EXT = get_non_code_extensions()
-    UNIVERSAL_TEST_EXT = get_universal_test_extensions()
-    TEST_DIRECTORIES = get_test_directories()
+    TEST_FILE_PATTERNS = get_test_file_patterns()
 except (FileNotFoundError, KeyError):
     # Fallback values
     NON_CODE_EXT = {
         '.md', '.markdown', '.txt', '.json', '.yml', '.yaml', '.xml', '.toml', '.ini', '.cfg', '.lock',
+        '.config', '.conf', '.properties', '.env', '.settings', '.prefs', '.rc', '.pro',
+        '.mk', '.make', '.cmake', '.gradle', '.sbt',
         '.html', '.htm', '.css', '.scss', '.sass', '.less', '.svg', '.png', '.jpg', '.jpeg', '.gif',
         '.ico', '.woff', '.woff2', '.ttf', '.eot', '.csv', '.tsv', '.log', '.sql', '.sh', '.bat',
         '.ps1', '.dockerfile', '.gitignore', '.gitattributes', '.editorconfig', '.browserslistrc'
     }
-    UNIVERSAL_TEST_EXT = {'.snap', '.spec'}
-    TEST_DIRECTORIES = ['/test/', '/tests/', '/spec/']
+    TEST_FILE_PATTERNS = {
+        "file_suffixes": [".test.", ".spec.", "_test.", "_spec."],
+        "file_extensions": [".snap"],
+        "directory_patterns": ["/test/", "/tests/", "/spec/", "/specs/", "__tests__", "__test__"]
+    }
 
 # Build source extensions set for all languages
 ALL_SOURCE_EXT = set()
@@ -201,21 +200,24 @@ def is_english(text):
     return (ascii_chars / total_chars) >= 0.9
 
 def _is_test_file(filepath: str, lang_name: str) -> bool:
-    """Determine if a path looks like a test file - relaxed approach."""
+    """Determine if a path looks like a test file using comprehensive patterns."""
     path_norm = filepath.replace("\\", "/").lower()
+    filename = os.path.basename(filepath).lower()
     
-    # Simple check: if "test" appears anywhere in the path, it's a test file
-    if "test" in path_norm:
-        return True
+    # Check for test file suffixes (e.g., .test.js, .spec.py, _test.py)
+    for suffix in TEST_FILE_PATTERNS.get("file_suffixes", []):
+        if suffix in filename:
+            return True
     
-    # Also check for "spec" as it's commonly used for test files
-    if "spec" in path_norm:
-        return True
-    
-    # Check for universal test file extensions as fallback
+    # Check for test file extensions (e.g., .snap)
     ext = os.path.splitext(filepath)[1].lower()
-    if ext in UNIVERSAL_TEST_EXT:
+    if ext in TEST_FILE_PATTERNS.get("file_extensions", []):
         return True
+    
+    # Check for test directory patterns
+    for pattern in TEST_FILE_PATTERNS.get("directory_patterns", []):
+        if pattern in path_norm:
+            return True
     
     return False
 
@@ -249,7 +251,9 @@ def print_language_configuration():
     print(f"Source Extensions: {', '.join(sorted(get_source_extensions(TARGET_LANGUAGE)))}")
     print(f"Dependency Files: {', '.join(sorted(get_dependency_files(TARGET_LANGUAGE)))}")
     print("-" * 80)
-    print(f"Universal Test Extensions: {', '.join(sorted(UNIVERSAL_TEST_EXT))}")
+    print(f"Test File Suffixes: {', '.join(TEST_FILE_PATTERNS.get('file_suffixes', []))}")
+    print(f"Test File Extensions: {', '.join(TEST_FILE_PATTERNS.get('file_extensions', []))}")
+    print(f"Test Directory Patterns: {', '.join(TEST_FILE_PATTERNS.get('directory_patterns', []))}")
     print(f"Non-Code Extensions: {', '.join(sorted(NON_CODE_EXT))}")
     print("-" * 80)
     print("PROCESSING CONFIGURATION")
@@ -409,15 +413,35 @@ def get_issue_body(issue_url):
 
 # --- Analysis Functions ---
 
-def extract_issue_number(pr_body):
-    """Extract issue number from PR body."""
+def extract_issue_number(pr_body, pr_number=None):
+    """Extract issue number from PR body. Returns issue number only if exactly one unique issue is found.
+    
+    Returns:
+        tuple: (issue_number, rejection_reason) where issue_number is str or None, 
+               and rejection_reason is str describing why it was rejected (if applicable)
+    """
     if not pr_body:
-        return None
+        return None, "No PR body content"
+    
+    # First try to find issues with closing keywords
     matches = re.findall(r'(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s+(?:[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+\s*)?#(\d+)', pr_body, re.IGNORECASE)
+    
+    # If no closing keywords found, look for any issue references
     if not matches:
         matches = re.findall(r'#(\d+)', pr_body)
+    
+    # Only return if exactly one unique issue is found
     unique_issues = set(matches)
-    return unique_issues.pop() if len(unique_issues) == 1 else None
+    if len(unique_issues) == 1:
+        return unique_issues.pop(), None
+    elif len(unique_issues) > 1:
+        pr_context = f" for PR #{pr_number}" if pr_number else ""
+        sorted_issues = sorted(unique_issues)
+        rejection_reason = f"Multiple issues found in PR body: {', '.join(['#' + issue for issue in sorted_issues])}"
+        print(f"[WARN] Multiple issues found in PR body via regex{pr_context}: {sorted_issues}. Rejecting for single-issue requirement.")
+        return None, rejection_reason
+    else:
+        return None, "No issue references found in PR body"
 
 def analyze_pr_files(files):
     """Perform language-aware logical checks on PR file list."""
@@ -428,6 +452,7 @@ def analyze_pr_files(files):
     allowed_ext = get_source_extensions(LANGUAGE)  # This is already a set of all family extensions
     dependency_files = get_dependency_files(LANGUAGE)
     non_code_ext = NON_CODE_EXT
+    test_file_extensions = set(TEST_FILE_PATTERNS.get("file_extensions", []))
 
     filenames = [f["filename"] for f in files]
 
@@ -436,6 +461,10 @@ def analyze_pr_files(files):
 
         # Always allow non-code/text/markup files and dependency files
         if ext in non_code_ext or os.path.basename(fn) in dependency_files:
+            continue
+
+        # Allow test file extensions (like .snap files)
+        if ext in test_file_extensions:
             continue
 
         # Only allow files with extensions in the language family
@@ -485,35 +514,80 @@ def run_llm_check(issue_body):
         return "Bad PR", f"LLM analysis failed: {e}"
 
 def get_closing_issue_number(pr_number, owner, repo, pr_body=None):
-    """Try to get the closing issue number for a PR using the GitHub API. Fallback to body parsing if needed."""
-    # Try GitHub REST API timeline endpoint for closing issues
-    url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/timeline"
-    headers = {
-        "Accept": "application/vnd.github.mockingbird-preview+json",
-        "User-Agent": "Agentic-PR-Checker",
-        "Authorization": f"token {GITHUB_TOKEN}"
-    }
-    try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            events = response.json()
-            closing_issues = [e for e in events if e.get('event') == 'cross-referenced' and e.get('source', {}).get('issue', {}).get('state') == 'closed']
-            # Prefer issues that are referenced as 'closing'
-            for e in events:
-                if e.get('event') == 'closed' and e.get('actor', {}).get('type') == 'Bot':
-                    continue  # skip bots
-            if closing_issues:
-                # If only one, return it
-                unique_issues = set(e['source']['issue']['number'] for e in closing_issues if 'source' in e and 'issue' in e['source'])
-                if len(unique_issues) == 1:
-                    return str(list(unique_issues)[0])
-        # If not found, fall back to body parsing
-    except Exception as e:
-        print(f"[WARN] Timeline API failed for PR #{pr_number}: {e}")
-    # Fallback: parse PR body
+    """
+    Try to get the closing issue number for a PR. First try regex parsing PR body, then GraphQL method.
+    
+    - Regex (PR body): Only accepts PRs with exactly one unique issue linked
+    - GraphQL: Accepts PRs with multiple issues and returns the first one
+    
+    Returns:
+        tuple: (issue_number, rejection_reason) where issue_number is str or None, 
+               and rejection_reason is str or None describing why it was rejected
+    """
+    # First try: Parse PR body with regex (fast and reliable for most cases)
     if pr_body is not None:
-        return extract_issue_number(pr_body)
-    return None
+        issue_number, rejection_reason = extract_issue_number(pr_body, pr_number)
+        if issue_number:
+            print(f"[INFO] Found issue #{issue_number} via PR body regex for PR #{pr_number}")
+            return issue_number, "regex_success"
+        elif rejection_reason:
+            return None, rejection_reason
+    
+    # Second try: GraphQL query for closing issues (like get_relevant_prs_from_repo.py)
+    print(f"[INFO] PR body regex failed, trying GraphQL query for PR #{pr_number}")
+    try:
+        graphql_query = """
+        query($owner: String!, $name: String!, $prNumber: Int!) {
+            repository(owner: $owner, name: $name) {
+                pullRequest(number: $prNumber) {
+                    closingIssuesReferences(first: 5) {
+                        nodes {
+                            number
+                        }
+                    }
+                }
+            }
+        }
+        """
+        
+        variables = {
+            "owner": owner,
+            "name": repo,
+            "prNumber": pr_number
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {GITHUB_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        
+        response = requests.post(
+            "https://api.github.com/graphql",
+            json={"query": graphql_query, "variables": variables},
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if not data.get('errors'):
+                pr_data = data.get('data', {}).get('repository', {}).get('pullRequest')
+                if pr_data:
+                    issue_nodes = pr_data.get('closingIssuesReferences', {}).get('nodes', [])
+                    if len(issue_nodes) >= 1:
+                        issue_number = str(issue_nodes[0]['number'])
+                        if len(issue_nodes) == 1:
+                            print(f"[INFO] Found issue #{issue_number} via GraphQL for PR #{pr_number}")
+                            return issue_number, "graphql_success"
+                        else:
+                            all_issues = [str(node['number']) for node in issue_nodes]
+                            print(f"[INFO] Found multiple issues via GraphQL for PR #{pr_number}: {all_issues}. Using first one: #{issue_number}")
+                            return issue_number, f"graphql_multiple_issues ({', '.join(['#' + issue for issue in all_issues])})"
+    except Exception as e:
+        print(f"[WARN] GraphQL query failed for PR #{pr_number}: {e}")
+    
+    # Both methods failed
+    print(f"[WARN] Both regex and GraphQL methods failed to find closing issue for PR #{pr_number}")
+    return None, "No issue found via regex or GraphQL"
 
 def find_logically_relevant_prs(owner, repo):
     """Find PRs that pass all logical checks and are candidates for agentic review. Always collect detailed rejection reasons and per-PR failure info for reporting."""
@@ -527,6 +601,7 @@ def find_logically_relevant_prs(owner, repo):
     filter_stats = {
         'total_prs': len(all_prs),
         'no_issue': 0,
+        'multiple_issues': 0,
         'not_english': 0,
         'insufficient_changes': 0,
         'file_checks_failed': 0,
@@ -547,14 +622,26 @@ def find_logically_relevant_prs(owner, repo):
             print(f"\r{progress_bar}", end='', flush=True)
 
         # Extract issue number
-        issue_number = get_closing_issue_number(pr_number, owner, repo, pr.get('body'))
+        issue_number, issue_rejection_reason = get_closing_issue_number(pr_number, owner, repo, pr.get('body'))
         if not issue_number:
-            filter_stats['no_issue'] += 1
-            rejection_reason = "No unique issue found."
-            failed_check = "no_issue"
+            # Categorize the rejection reason
+            if "Multiple issues found in PR body" in issue_rejection_reason:
+                filter_stats['multiple_issues'] += 1
+                failed_check = "multiple_issues"
+                rejection_reason = issue_rejection_reason
+            else:
+                filter_stats['no_issue'] += 1
+                failed_check = "no_issue" 
+                rejection_reason = issue_rejection_reason or "No unique issue found."
+            
             rejected_prs.append({'number': pr_number, 'url': pr_url, 'reason': rejection_reason})
             pr_failure_details.append({'pr_number': pr_number, 'pr_url': pr_url, 'failed_check': failed_check, 'reason': rejection_reason})
             continue
+        
+        # If GraphQL found multiple issues but still returned one, track it for reporting
+        if issue_rejection_reason and "graphql_multiple_issues" in issue_rejection_reason:
+            print(f"[INFO] PR #{pr_number} has multiple issues detected via GraphQL but proceeding with analysis: {issue_rejection_reason}")
+            # Note: We don't increment multiple_issues counter here since we're proceeding with the PR
 
         # Get issue details
         issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}"
@@ -654,6 +741,7 @@ def find_logically_relevant_prs(owner, repo):
     print(f"\n📊 LOGICAL FILTERING RESULTS for {owner}/{repo}:")
     print(f"   📈 Total PRs analyzed: {filter_stats['total_prs']}")
     print(f"   ❌ No linked issue: {filter_stats['no_issue']}")
+    print(f"   ❌ Multiple issues linked: {filter_stats['multiple_issues']}")
     print(f"   ❌ Not in English: {filter_stats['not_english']}")
     print(f"   ❌ Insufficient changes: {filter_stats['insufficient_changes']}")
     print(f"   ❌ Failed file checks: {filter_stats['file_checks_failed']}")

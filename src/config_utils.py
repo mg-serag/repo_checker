@@ -343,19 +343,6 @@ def get_dependency_files(language_name: str) -> set:
     file_config = get_language_file_analysis_config(language_name)
     return set(file_config['dependency_files'])
 
-def get_test_patterns(language_name: str) -> list:
-    """
-    Get test file patterns for a specific language.
-    
-    Args:
-        language_name: Name of the language
-        
-    Returns:
-        List of test file patterns
-    """
-    file_config = get_language_file_analysis_config(language_name)
-    return file_config['test_patterns']
-
 def get_loc_thresholds(language_name: str) -> Dict[int, int]:
     """
     Get LOC thresholds for a specific language.
@@ -400,15 +387,15 @@ def get_non_code_extensions() -> set:
     global_settings = get_global_settings()
     return set(global_settings['non_code_extensions'])
 
-def get_universal_test_extensions() -> set:
+def get_test_file_patterns() -> Dict[str, list]:
     """
-    Get universal test file extensions.
+    Get comprehensive test file patterns for detecting test files.
     
     Returns:
-        Set of universal test file extensions
+        Dictionary containing file_suffixes, file_extensions, and directory_patterns
     """
     global_settings = get_global_settings()
-    return set(global_settings['universal_test_extensions'])
+    return global_settings['test_file_patterns']
 
 def get_language_project_id(language_name: str) -> int:
     """
@@ -467,14 +454,4 @@ def get_language_csv_folder(language_name: str) -> str:
     batches_dir = os.path.join(root_dir, 'batches')
     csv_folder = os.path.join(batches_dir, folder_name)
     
-    return csv_folder
-
-def get_test_directories() -> list:
-    """
-    Get test directory patterns.
-    
-    Returns:
-        List of test directory patterns
-    """
-    global_settings = get_global_settings()
-    return global_settings['test_directories'] 
+    return csv_folder 

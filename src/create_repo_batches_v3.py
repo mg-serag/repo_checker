@@ -72,7 +72,7 @@ from convert import process_json_file
 # Modify these values to run the script directly without command line arguments
 
 # Language settings (change as needed)
-LANGUAGE = "JavaScript"
+LANGUAGE = "C/C++"
 
 # Count for repositories to process
 TARGET_COUNT = 10
@@ -84,10 +84,10 @@ TARGET_COUNT = 10
 UPLOAD_MODE = 'Logical'  # Options: 'All', 'Good', 'Logical'
 
 # Use manual repos or spreadsheet
-USE_MANUAL_REPOS = False  # Set to False to use spreadsheet
+USE_MANUAL_REPOS = True  # Set to False to use spreadsheet
 
 # Re-trigger SWE-Bench jobs to get fresh data (recommended after system updates)
-RETRIGGER_JOBS = False  # Set to False to use existing completed jobs
+RETRIGGER_JOBS = True  # Set to False to use existing completed jobs
 
 # Concurrent job limits to manage resource usage
 MAX_CONCURRENT_JOBS = 10  # Maximum number of jobs to run in parallel
@@ -97,10 +97,10 @@ MIN_PRS_FOR_UPLOAD = 2  # Minimum number of usable PRs required to upload a batc
 
 # Manual repository list (only used if USE_MANUAL_REPOS = True)
 MANUAL_REPOS = [
-    "renovatebot/renovate",
-    "wevm/viem",
-    "apache/seatunnel",
-    "checkstyle/checkstyle"
+    "apache/arrow", "DynamoRIO/dynamorio", "pocoproject/poco", "fluent/fluent-bit", "valkey-io/valkey"
+    # "wevm/viem",
+    # "apache/seatunnel",
+    # "checkstyle/checkstyle"
     # "elastic/kibana",
     # "prebid/Prebid.js",
     # "danny-avila/LibreChat",

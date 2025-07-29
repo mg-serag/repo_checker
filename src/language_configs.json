@@ -30,8 +30,7 @@
           "poetry.lock",
           "tox.ini",
           "pytest.ini"
-        ],
-        "test_patterns": ["test"]
+        ]
       }
     },
     "JavaScript": {
@@ -66,8 +65,7 @@
           "babel.config.js",
           ".eslintrc.js",
           ".prettierrc.js"
-        ],
-        "test_patterns": ["test", "spec"]
+        ]
       }
     },
     "TypeScript": {
@@ -104,8 +102,7 @@
           "babel.config.js",
           ".eslintrc.js",
           ".prettierrc.js"
-        ],
-        "test_patterns": ["test", "spec"]
+        ]
       }
     },
     "Java": {
@@ -139,8 +136,7 @@
           "gradlew.bat",
           "mvnw",
           "mvnw.cmd"
-        ],
-        "test_patterns": ["test"]
+        ]
       }
     },
     "Go": {
@@ -169,8 +165,7 @@
           "go.sum",
           "Gopkg.toml",
           "Gopkg.lock"
-        ],
-        "test_patterns": ["test"]
+        ]
       }
     },
     "C/C++": {
@@ -207,8 +202,7 @@
           "Cargo.toml",
           "meson.build",
           "SConstruct"
-        ],
-        "test_patterns": ["test"]
+        ]
       }
     },
     "Ruby": {
@@ -240,8 +234,7 @@
           "config.ru",
           ".ruby-version",
           ".rbenv-version"
-        ],
-        "test_patterns": ["test", "spec"]
+        ]
       }
     },
     "Rust": {
@@ -269,8 +262,7 @@
           "Cargo.toml",
           "Cargo.lock",
           "rust-toolchain.toml"
-        ],
-        "test_patterns": ["test"]
+        ]
       }
     },
     "C#": {
@@ -297,8 +289,7 @@
         "dependency_files": [
           "packages.config",
           "*.csproj"
-        ],
-        "test_patterns": ["test"]
+        ]
       }
     }
   },
@@ -309,7 +300,10 @@
       ".ico", ".woff", ".woff2", ".ttf", ".eot", ".csv", ".tsv", ".log", ".sql", ".sh", ".bat",
       ".ps1", ".dockerfile", ".gitignore", ".gitattributes", ".editorconfig", ".browserslistrc"
     ],
-    "universal_test_extensions": [".snap", ".spec"],
-    "test_directories": ["/test/", "/tests/", "/spec/"]
+    "test_file_patterns": {
+      "file_suffixes": [".test.", ".spec.", "_test.", "_spec."],
+      "file_extensions": [".snap"],
+      "directory_patterns": ["/test/", "/tests/", "/spec/", "/specs/", "__tests__", "__test__"]
+    }
   }
 } 
